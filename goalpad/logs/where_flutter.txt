@@ -1,0 +1,11 @@
+﻿
+CommandType     Name                                               Version    S
+                                                                              o
+                                                                              u
+                                                                              r
+                                                                              c
+                                                                              e
+-----------     ----                                               -------    -
+Application     flutter.bat                                        0.0.0.0    C
+
+
