@@ -1,84 +1,43 @@
-# GoalPad
+# Benvis — Your Life OS (Flutter)
 
-A Flutter app for goals, habits, and journaling with offline-first architecture.
+اپلیکیشن **بنویس**: مدیریت اهداف و عادات، پیگیری مهارت‌ها، KPIهای کسب‌وکار و کوچ هوش‌مصنوعی—همه در یک داشبورد مدرن با تم تیره و گلس‌مورفیسم.  
+**بستهٔ اندروید:** `com.benvis.app` • **پوشهٔ پروژه:** `benvis/`
 
-## Features
+---
 
-- **Goals Management**: Create, track, and manage your goals
-- **Habit Tracking**: Build and maintain daily/weekly habits with streak tracking
-- **Journal Entries**: Record daily thoughts and mood
-- **Offline-First**: All data stored locally using Hive
-- **Material 3 Design**: Modern UI with Material Design 3
+## ✨ قابلیت‌ها
+- **داشبورد هوشمند:** درصد پیشرفت، streak، درآمد/متریک‌ها و اهداف فعال
+- **اهداف و عادات:** ایجاد/ویرایش، پیگیری روزانه/هفتگی، نوار پیشرفت
+- **مهارت‌ها:** لیست مهارت‌های جدید و میزان پیشرفت هر کدام
+- **کسب‌وکار:** کارت‌های KPI (مثلاً بازاریابی، محصول، مالی)
+- **AI Coach:** بخش گفتگو برای راهنمایی و برنامه‌ریزی
+- **امنیت ورود:** اثرانگشت/Face/PIN (در دستگاه‌های پشتیبانی‌شده)
+- **RTL و چندزبانه:** فارسی/انگلیسی (RTL پیش‌فرض)
+- **PWA Ready:** قابل نصب روی وب با استراتژی آفلاین
+- **تم و برندینگ:** رنگ‌های بنفش/آبی، کارت‌های شیشه‌ای، Material 3
 
-## Tech Stack
+---
 
-- Flutter with null-safety
-- Riverpod for state management
-- Hive for local storage
-- Material 3 design system
+## 🧱 Tech Stack
+- **Flutter (Dart 3، Material 3)**
+- **State Management:** (قابل‌گسترش؛ در حال حاضر ساده/لوکال)
+- **Local Store:** `shared_preferences` (قابل ارتقا به Hive)
+- **Biometrics:** `local_auth` (در صورت نیاز)
+- **CI/CD:** GitHub Actions → خروجی **APK** در Artifacts
 
-## Setup
+> ساختار پوشه‌ها: کل کد اپ در `benvis/` است (اگر قبلاً `goalpad/` داشته‌اید، به `benvis/` منتقل شده).
 
-1. **Install Flutter** (if not already installed)
-   ```bash
-   # Download from https://flutter.dev/docs/get-started/install
-   ```
+---
 
-2. **Get dependencies**
-   ```bash
-   flutter pub get
-   ```
+## 🚀 شروع سریع
 
-3. **Generate Hive adapters**
-   ```bash
-   flutter pub run build_runner build --delete-conflicting-outputs
-   ```
+### پیش‌نیازها
+- Flutter stable (Dart 3)
+- Android SDK 34 ، Java 17
 
-4. **Run the app**
-   ```bash
-   flutter run
-   ```
-
-## Project Structure
-
-```
-lib/
-  main.dart
-  features/journal/
-    data/local/
-      hive_boxes.dart
-    models/
-      goal.dart
-      task.dart
-      habit.dart
-      journal_entry.dart
-    logic/
-      providers.dart
-    ui/
-      app_shell.dart
-      pages/
-        goals_page.dart
-        journal_page.dart
-        habits_page.dart
-```
-
-## Data Storage
-
-- **Location**: `~/Documents/` (platform-specific)
-- **Format**: Hive database files
-- **Backup**: Copy the entire app data directory
-
-## Development
-
-- **State Management**: Riverpod with StateNotifier
-- **Local Storage**: Hive with generated adapters
-- **Testing**: Flutter test framework
-- **Code Generation**: build_runner for Hive adapters
-
-## Next Steps
-
-- Add goal detail page with task management
-- Implement habit frequency tracking
-- Add journal entry editing
-- Add local notifications for reminders
-
+### کلون و اجرا
+```bash
+git clone https://github.com/mehdinil/Bnvis.git
+cd Bnvis/benvis
+flutter pub get
+flutter run -d android
