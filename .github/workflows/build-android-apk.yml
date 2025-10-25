@@ -87,12 +87,19 @@ jobs:
           grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
           grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
 
-      - name: Build APK (debug + try release)
-        working-directory: ${{ steps.findproj.outputs.project }}
+            - name: Clone Flutter (stable)
         run: |
-          flutter doctor -v
-          flutter build apk --debug
-          flutter build apk --release || echo "Release failed; debug will be uploaded."
+          git clone https://github.com/flutter/flutter.git -b stable
+
+      - name: Add Flutter to PATH (for next steps)
+        run: |
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
+          echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+
+      - name: Verify Flutter
+        run: |
+          flutter --version
+
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@134dcf33c0b9454c4b17a936843d7e21dccdc335
