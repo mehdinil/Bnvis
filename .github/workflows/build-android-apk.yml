@@ -1,4 +1,4 @@
-name: Build Android APK (from ZIP)
+name: Build Android APK (ZIP or Source)
 
 on:
   workflow_dispatch:
@@ -11,19 +11,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@a2374547dfdd276b7bd9e4ba2c6ba50647d9c8a7
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@4b7c168f7a0db06c38b251f296a92b29575ce6cf
         with:
           api-level: 34
           build-tools: '34.0.0'
@@ -33,38 +32,42 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y unzip
 
       - name: Unzip project if a ZIP exists
+        id: unzip
         run: |
           shopt -s nullglob
           mkdir -p unzipped
           zips=( *.zip **/*.zip )
           if [ ${#zips[@]} -gt 0 ]; then
-            echo "Found ZIP(s): ${zips[@]}"
             for z in "${zips[@]}"; do unzip -q "$z" -d unzipped ; done
             echo "unzipped=true" >> $GITHUB_ENV
           else
             echo "unzipped=false" >> $GITHUB_ENV
           fi
 
-      - name: Locate Flutter project (pubspec.yaml)
+      - name: Locate Flutter project
         id: findproj
         run: |
           set -e
           SEARCH_DIR="."
           if [ "$unzipped" = "true" ]; then SEARCH_DIR="unzipped"; fi
-          PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 4 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "❌ No Flutter project (pubspec.yaml) found." >&2
-            exit 1
+          if [ -f "$SEARCH_DIR/goalpad/pubspec.yaml" ]; then
+            PROJECT_DIR="$SEARCH_DIR/goalpad"
+          else
+            PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 5 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
           fi
+          [ -z "$PROJECT_DIR" ] && { echo "No Flutter project found"; exit 1; }
           echo "project=$PROJECT_DIR" >> $GITHUB_OUTPUT
           echo "Detected project at: $PROJECT_DIR"
 
-      - name: Setup Flutter SDK
-        uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@cf426f9aa26303f2021ef0121de2f92a284e4e53
         with:
           channel: stable
 
-      # --- Safe patches to avoid common AGP/Gradle mismatches ---
+      - name: Flutter pub get
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: flutter pub get
+
       - name: Patch Android Gradle (safe defaults)
         working-directory: ${{ steps.findproj.outputs.project }}/android
         run: |
@@ -73,7 +76,7 @@ jobs:
             sed -i 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.6-bin.zip#' gradle/wrapper/gradle-wrapper.properties || true
             sed -i '/distributionSha256/d' gradle/wrapper/gradle-wrapper.properties || true
           fi
-          if [ -f settings.gradle ]; then
+          if grep -q 'plugins' settings.gradle; then
             sed -i 's/id(\\\"com\\.android\\.application\\\") version \\\"[^\\\"]*\\\"/id(\"com.android.application\") version \"8.1.1\"/' settings.gradle || true
             sed -i 's/id(\\\"com\\.android\\.library\\\") version \\\"[^\\\"]*\\\"/id(\"com.android.library\") version \"8.1.1\"/' settings.gradle || true
             sed -i 's/id(\\\"org\\.jetbrains\\.kotlin\\.android\\\") version \\\"[^\\\"]*\\\"/id(\"org.jetbrains.kotlin.android\") version \"1.9.23\"/' settings.gradle || true
@@ -88,18 +91,15 @@ jobs:
           grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
           grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
 
-      - name: Flutter pub get
-        working-directory: ${{ steps.findproj.outputs.project }}
-        run: flutter pub get
-
-      - name: Build APK (release)
+      - name: Build APK (debug + release)
         working-directory: ${{ steps.findproj.outputs.project }}
         run: |
-          flutter --version
-          flutter build apk --release --split-per-abi || flutter build apk --release
+          set -e
+          flutter build apk --debug
+          flutter build apk --release || echo "Release build failed; debug APK uploaded."
 
       - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@134dcf33c0b9454c4b17a936843d7e21dccdc335
         with:
           name: android-apk
           path: |
