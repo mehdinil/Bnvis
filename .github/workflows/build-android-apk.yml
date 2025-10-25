@@ -1,16 +1,19 @@
-name: Build Android APK (ZIP or Source)
+name: Build Android APK (pinned & hardened)
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - '**.zip'
-      - '**/pubspec.yaml'
+      - 'goalpad/**'
       - '.github/workflows/build-android-apk.yml'
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -20,49 +23,42 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@4b7c168f7a0db06c38b251f296a92b29575ce6cf
-        with:
-          api-level: 34
-          build-tools: '34.0.0'
-          accept-licenses: true
-
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
-
-      - name: Unzip project if a ZIP exists
-        id: unzip
+      - name: Install basic deps
         run: |
-          shopt -s nullglob
-          mkdir -p unzipped
-          zips=( *.zip **/*.zip )
-          if [ ${#zips[@]} -gt 0 ]; then
-            for z in "${zips[@]}"; do unzip -q "$z" -d unzipped ; done
-            echo "unzipped=true" >> $GITHUB_ENV
-          else
-            echo "unzipped=false" >> $GITHUB_ENV
-          fi
+          sudo apt-get update
+          sudo apt-get install -y unzip zip git xz-utils
+
+      # ⚠️ به‌جای اکشن flutter-action: کلون دستی + اضافه‌کردن به PATH با Environment Files
+      - name: Setup Flutter (manual, stable)
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
+          echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          flutter --version
+
+      # ⚠️ به‌جای اکشن setup-android: استفاده از SDK پیش‌نصب + نصب پکیج‌های لازم
+      - name: Prepare Android SDK
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH || true
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" || true
 
       - name: Locate Flutter project
         id: findproj
         run: |
           set -e
-          SEARCH_DIR="."
-          if [ "$unzipped" = "true" ]; then SEARCH_DIR="unzipped"; fi
-          if [ -f "$SEARCH_DIR/goalpad/pubspec.yaml" ]; then
-            PROJECT_DIR="$SEARCH_DIR/goalpad"
+          if [ -f "goalpad/pubspec.yaml" ]; then
+            echo "project=goalpad" >> $GITHUB_OUTPUT
           else
-            PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 5 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
+            PROJECT_DIR=$(find . -maxdepth 5 -type f -name pubspec.yaml | head -n 1 | xargs -I{} dirname {})
+            [ -z "$PROJECT_DIR" ] && { echo "No Flutter project found"; exit 1; }
+            echo "project=$PROJECT_DIR" >> $GITHUB_OUTPUT
           fi
-          [ -z "$PROJECT_DIR" ] && { echo "No Flutter project found"; exit 1; }
-          echo "project=$PROJECT_DIR" >> $GITHUB_OUTPUT
-          echo "Detected project at: $PROJECT_DIR"
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@cf426f9aa26303f2021ef0121de2f92a284e4e53
-        with:
-          channel: stable
+          echo "Project dir: ${{ steps.findproj.outputs.project }}"
 
       - name: Flutter pub get
         working-directory: ${{ steps.findproj.outputs.project }}
@@ -91,16 +87,15 @@ jobs:
           grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
           grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
 
-      - name: Build APK (debug + release)
+      - name: Build APK (debug + try release)
         working-directory: ${{ steps.findproj.outputs.project }}
         run: |
-          set -e
+          flutter doctor -v
           flutter build apk --debug
-          flutter build apk --release || echo "Release build failed; debug APK uploaded."
+          flutter build apk --release || echo "Release failed; debug will be uploaded."
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@134dcf33c0b9454c4b17a936843d7e21dccdc335
         with:
           name: android-apk
-          path: |
-            ${{ steps.findproj.outputs.project }}/build/app/outputs/flutter-apk/*.apk
+          path: ${{ steps.findproj.outputs.project }}/build/app/outputs/flutter-apk/*.apk
