@@ -13,7 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -30,15 +29,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip zip git xz-utils
 
-      # ⚠️ به‌جای اکشن flutter-action: کلون دستی + اضافه‌کردن به PATH با Environment Files
-      - name: Setup Flutter (manual, stable)
+      # کلون Flutter stable و اضافه کردن به PATH
+      - name: Clone Flutter (stable)
+        run: git clone https://github.com/flutter/flutter.git -b stable
+
+      - name: Add Flutter to PATH
         run: |
-          git clone https://github.com/flutter/flutter.git -b stable
           echo "$PWD/flutter/bin" >> $GITHUB_PATH
           echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-          flutter --version
 
-      # ⚠️ به‌جای اکشن setup-android: استفاده از SDK پیش‌نصب + نصب پکیج‌های لازم
+      - name: Verify Flutter
+        run: flutter --version
+
+      # استفاده از Android SDK موجود و نصب پلتفرم 34
       - name: Prepare Android SDK
         env:
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -47,6 +50,7 @@ jobs:
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" || true
 
+      # یافتن پروژه Flutter
       - name: Locate Flutter project
         id: findproj
         run: |
@@ -55,15 +59,16 @@ jobs:
             echo "project=goalpad" >> $GITHUB_OUTPUT
           else
             PROJECT_DIR=$(find . -maxdepth 5 -type f -name pubspec.yaml | head -n 1 | xargs -I{} dirname {})
-            [ -z "$PROJECT_DIR" ] && { echo "No Flutter project found"; exit 1; }
+            [ -z "$PROJECT_DIR" ] && { echo "❌ No Flutter project found"; exit 1; }
             echo "project=$PROJECT_DIR" >> $GITHUB_OUTPUT
           fi
-          echo "Project dir: ${{ steps.findproj.outputs.project }}"
+          echo "Project directory: ${{ steps.findproj.outputs.project }}"
 
       - name: Flutter pub get
         working-directory: ${{ steps.findproj.outputs.project }}
         run: flutter pub get
 
+      # پچ Gradle/AGP/Kotlin/SDK
       - name: Patch Android Gradle (safe defaults)
         working-directory: ${{ steps.findproj.outputs.project }}/android
         run: |
@@ -87,19 +92,13 @@ jobs:
           grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
           grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
 
-            - name: Clone Flutter (stable)
+      # ساخت APK
+      - name: Build APKs
+        working-directory: ${{ steps.findproj.outputs.project }}
         run: |
-          git clone https://github.com/flutter/flutter.git -b stable
-
-      - name: Add Flutter to PATH (for next steps)
-        run: |
-          echo "$PWD/flutter/bin" >> $GITHUB_PATH
-          echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-
-      - name: Verify Flutter
-        run: |
-          flutter --version
-
+          flutter doctor -v
+          flutter build apk --debug
+          flutter build apk --release || echo "⚠️ Release build failed (likely unsigned)."
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@134dcf33c0b9454c4b17a936843d7e21dccdc335
