@@ -1,0 +1,110 @@
+name: Brand to Benvis & Build Android APK (no marketplace actions)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (no marketplace action)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git init .
+          git remote add origin https://github.com/${{ github.repository }}.git
+          git fetch --depth=1 origin ${{ github.ref_name || 'main' }}
+          git checkout -f FETCH_HEAD
+
+      - name: Patch branding to Benvis
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PROJ=goalpad
+          # 1) Android label
+          test -f $PROJ/android/app/src/main/AndroidManifest.xml && \
+            sed -i 's/android:label=\"[^\"]*\"/android:label=\"Benvis\"/' $PROJ/android/app/src/main/AndroidManifest.xml || true
+
+          # 2) Settings title
+          test -f $PROJ/lib/features/journal/ui/pages/settings_page.dart && \
+            sed -i 's/Tablo Settings/Benvis/g' $PROJ/lib/features/journal/ui/pages/settings_page.dart || true
+
+          # 3) App title & theme (Material3 purple)
+          if [ -f $PROJ/lib/main.dart ]; then
+            perl -0777 -pe "s/title:\s*'[^']*'/title: 'Benvis'/g" -i $PROJ/lib/main.dart || true
+            perl -0777 -pe "s/ThemeData\([^)]*\)/ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7C3AED)),)/" -i $PROJ/lib/main.dart || true
+          fi
+
+          # 4) Adaptive icon background (purple)
+          mkdir -p $PROJ/android/app/src/main/res/values
+          cat > $PROJ/android/app/src/main/res/values/ic_launcher_background.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+            <color name="ic_launcher_background">#7C3AED</color>
+          </resources>
+          XML
+
+      - name: Bump Gradle/AGP to safe combo
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PROJ=goalpad/android
+          # Gradle wrapper 8.4
+          if [ -f $PROJ/gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's/gradle-[0-9.]*-all.zip/gradle-8.4-all.zip/' $PROJ/gradle/wrapper/gradle-wrapper.properties || true
+          fi
+          # AGP 8.4.0 in settings.gradle or build.gradle
+          if [ -f $PROJ/settings.gradle ]; then
+            sed -i 's/id "com.android.application" version "[^"]*"/id "com.android.application" version "8.4.0"/' $PROJ/settings.gradle || true
+            sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.23"/' $PROJ/settings.gradle || true
+          fi
+          if [ -f $PROJ/build.gradle ]; then
+            sed -i "s/classpath 'com.android.tools.build:gradle:[^']*'/classpath 'com.android.tools.build:gradle:8.4.0'/" $PROJ/build.gradle || true
+          fi
+
+      - name: Show Java
+        run: java -version
+
+      - name: Accept Android licenses & ensure SDK
+        shell: bash
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT || '/usr/lib/android-sdk' }}
+        run: |
+          set -euxo pipefail
+          if [ -d "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" ]; then
+            yes | sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses || true
+            sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" || true
+          else
+            echo 'cmdline-tools not found, skipping explicit install'
+          fi
+
+      - name: Setup Flutter (no marketplace action)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone https://github.com/flutter/flutter.git -b stable
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
+          echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          flutter --version
+
+      - name: Flutter pub get
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd goalpad
+          flutter pub get
+
+      - name: Build APK (debug)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd goalpad
+          flutter build apk --debug
+
+      - name: Upload APK artifact via gh CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gh run upload-artifact --name android-apk goalpad/build/app/outputs/flutter-apk/*.apk
