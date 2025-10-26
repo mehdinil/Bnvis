@@ -1,37 +1,3 @@
-name: Build to Benevis & Build Android APK (robust, no marketplace actions)
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-env:
-  ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-  FLUTTER_HOME: ${{ github.workspace }}/flutter
-  JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout repository (no marketplace action)
-        run: |
-          set -euxo pipefail
-          git init .
-          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          # اگر روی main نیستیم، از ref جاری می‌کشد
-          git fetch --depth=1 origin "${{ github.ref_name || 'main' }}"
-          git checkout -qf FETCH_HEAD
-          echo "HEAD at: $(git rev-parse --short HEAD)"
-          ls -la
-
-      - name: Install base deps & JDK 17
-        run: |
-          set -euxo pipefail
-          sudo apt-get update -y
-          sudo apt-get install -y curl unzip xz-utils zip libglu1-mesa openjdk-17-jdk bash sed coreutils jq
-
       - name: Install Android SDK (cmdline-tools + API 35 + build-tools 35)
         run: |
           set -euxo pipefail
@@ -42,102 +8,13 @@ jobs:
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/build-tools/35.0.0" >> $GITHUB_PATH
-          yes | "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --licenses
+
+          # --- حل خطای "yes: standard output: Broken pipe" ---
+          # sdkmanager گاهی زود خروجی را می‌بندد و با pipefail کل استپ می‌ریزد.
+          # موقتاً pipefail را خاموش می‌کنیم، لایسنس‌ها را می‌پذیریم، بعد دوباره روشن می‌کنیم.
+          set +o pipefail
+          yes | "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
+          set -o pipefail
+
           "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Install Flutter (stable)
-        run: |
-          set -euxo pipefail
-          git clone --depth=1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
-          echo "$FLUTTER_HOME/bin" >> $GITHUB_PATH
-          echo "$FLUTTER_HOME/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-          flutter --version
-          flutter doctor -v
-
-      - name: Locate Flutter project (pubspec.yaml)
-        id: locate
-        run: |
-          set -euxo pipefail
-          # نزدیک‌ترین pubspec.yaml
-          FILE=$(git ls-files | grep -E '^pubspec\.yaml$|.*/pubspec\.yaml$' | head -n1 || true)
-          if [ -z "$FILE" ]; then
-            echo "No pubspec.yaml found in repo root; trying common folder names…" >&2
-          fi
-          DIR=$(dirname "${FILE:-.}")
-          # اگر pubspec پیدا نشد، حدس بزن goalpad/
-          if [ "$DIR" = "." ] && [ ! -f pubspec.yaml ]; then
-            if [ -f goalpad/pubspec.yaml ]; then
-              DIR="goalpad"
-            fi
-          fi
-          if [ ! -f "$DIR/pubspec.yaml" ]; then
-            echo "Still no pubspec.yaml at $DIR!" >&2
-            ls -la
-            exit 1
-          fi
-          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
-          echo "Found pubspec at: $DIR/pubspec.yaml"
-          # نمایش ساختار برای دیباگ
-          (cd "$DIR" && echo "---- TREE ----" && ls -R | sed -n '1,400p')
-
-      - name: Brand to Benevis (safe)
-        run: |
-          set -euxo pipefail
-          cd "$PROJECT_DIR"
-          # ست نام
-          if [ -f android/app/src/main/res/values/strings.xml ]; then
-            sed -i 's#<string name="app_name">[^<]*</string>#<string name="app_name">Benevis</string>#g' android/app/src/main/res/values/strings.xml
-          fi
-          # پین Gradle برای جلوگیری از ناسازگاری
-          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's#distributionUrl=.*gradle-.*-all.zip#distributionUrl=https://services.gradle.org/distributions/gradle-8.4-all.zip#' android/gradle/wrapper/gradle-wrapper.properties || true
-          fi
-
-      - name: Flutter pub get
-        run: |
-          set -euxo pipefail
-          cd "$PROJECT_DIR"
-          flutter pub get
-
-      - name: Build release APK (verbose)
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-        run: |
-          set -euxo pipefail
-          cd "$PROJECT_DIR"
-          flutter build apk --release -v
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-          test -f "$APK" && echo "APK_READY=$APK" >> $GITHUB_ENV
-
-      - name: Zip APK (for debugging/download)
-        if: env.APK_READY != ''
-        run: |
-          set -euxo pipefail
-          cd "$PROJECT_DIR"
-          zip -j benevis-apk.zip "$APK"
-          echo "ZIP_PATH=$PWD/benevis-apk.zip" >> $GITHUB_ENV
-
-      - name: Create GitHub Release via API and upload asset (no gh)
-        if: env.ZIP_PATH != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          TAG="android-apk-${GITHUB_RUN_NUMBER}"
-          REPO="${{ github.repository }}"
-          # ساخت ریلیز
-          CREATE_RES=$(curl -sS -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/$REPO/releases \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"Android APK $TAG\",\"body\":\"Automated build for ${GITHUB_SHA::7}\",\"draft\":false,\"prerelease\":false}")
-          UPLOAD_URL=$(echo "$CREATE_RES" | jq -r '.upload_url' | sed 's/{?name,label}//')
-          echo "UPLOAD_URL=$UPLOAD_URL"
-          # آپلود asset
-          curl -sS -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/zip" \
-            --data-binary @"$ZIP_PATH" \
-            "$UPLOAD_URL?name=benevis-apk.zip"
-          echo "Release created with benevis-apk.zip"
