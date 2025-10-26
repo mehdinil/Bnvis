@@ -93,4 +93,4 @@ jobs:
           # ساخت Release به حالت Draft
           gh release create "$TAG" dist/Benevis-release.apk dist/Benevis-release.apk.sha256 \
             --draft --title "$TITLE" --notes "$NOTES"
-          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV 
