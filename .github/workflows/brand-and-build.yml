@@ -2,12 +2,6 @@ name: Build to Benevis & Build Android APK (robust, no marketplace actions)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "android/**"
-      - "lib/**"
-      - "pubspec.yaml"
-      - ".github/workflows/brand-and-build.yml"
 
 permissions:
   contents: write
@@ -16,7 +10,6 @@ env:
   ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
   FLUTTER_HOME: ${{ github.workspace }}/flutter
   JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx3g -XX:MaxMetaspaceSize=512m' -Dkotlin.daemon.jvm.options=-Xmx1024m"
 
 jobs:
   build:
@@ -27,16 +20,18 @@ jobs:
           set -euxo pipefail
           git init .
           git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          git fetch --depth=1 origin ${{ github.sha }}
-          git checkout -qf ${{ github.sha }}
+          git fetch --depth=1 origin ${{ github.ref_name || 'main' }}
+          git checkout -qf FETCH_HEAD
+          git status
 
       - name: Install base deps & JDK 17
         run: |
           set -euxo pipefail
           sudo apt-get update -y
           sudo apt-get install -y curl unzip xz-utils zip libglu1-mesa openjdk-17-jdk bash sed coreutils
+          java -version
 
-      - name: Install Android SDK (cmdline-tools + build-tools 35)
+      - name: Install Android SDK
         run: |
           set -euxo pipefail
           mkdir -p "$ANDROID_SDK_ROOT"/cmdline-tools
@@ -50,12 +45,19 @@ jobs:
           "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Install Flutter (stable)
+      - name: Install Flutter (clone stable)
         run: |
           set -euxo pipefail
           git clone --depth=1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+
+      - name: Add Flutter to PATH (for next steps)
+        run: |
           echo "$FLUTTER_HOME/bin" >> $GITHUB_PATH
           echo "$FLUTTER_HOME/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+
+      - name: Verify Flutter
+        run: |
+          set -euxo pipefail
           flutter --version
           flutter doctor -v
 
@@ -63,29 +65,24 @@ jobs:
         id: locate
         run: |
           set -euxo pipefail
-          # پیدا کردن نزدیک‌ترین pubspec.yaml
           FILE=$(git ls-files | grep -E '^pubspec\.yaml$|.*/pubspec\.yaml$' | head -n1 || true)
           if [ -z "$FILE" ]; then
-            echo "No pubspec.yaml found in repo!" >&2
+            echo "No pubspec.yaml found!" >&2
             exit 1
           fi
           DIR=$(dirname "$FILE")
           echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
           echo "Found pubspec at: $FILE (dir=$DIR)"
-      
-      - name: Brand to Benevis (safe replace)
+
+      - name: Brand to Benevis (safe)
         run: |
           set -euxo pipefail
           cd "$PROJECT_DIR"
           if [ -f android/app/src/main/res/values/strings.xml ]; then
             sed -i 's#<string name="app_name">[^<]*</string>#<string name="app_name">Benevis</string>#g' android/app/src/main/res/values/strings.xml
           fi
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/applicationId "[^"]*"/applicationId "com.benevis.app"/' android/app/build.gradle || true
-          fi
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/applicationId = "[^"]*"/applicationId = "com.benevis.app"/' android/app/build.gradle.kts || true
-          fi
+          # پین Gradle برای سازگاری
+          sed -i 's#distributionUrl=.*gradle-.*-all.zip#distributionUrl=https://services.gradle.org/distributions/gradle-8.4-all.zip#' android/gradle/wrapper/gradle-wrapper.properties || true
 
       - name: Flutter pub get
         run: |
@@ -99,12 +96,9 @@ jobs:
         run: |
           set -euxo pipefail
           cd "$PROJECT_DIR"
-          # در صورت قدیمی بودن پروژه: همخوانی AGP/Gradle
-          sed -i 's/distributionUrl=.*gradle-.*-all.zip/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.4-all.zip/' android/gradle/wrapper/gradle-wrapper.properties || true
-          # build
           flutter build apk --release -v
 
-      - name: Publish APK as GitHub Release asset
+      - name: Publish APK as GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
