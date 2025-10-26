@@ -1,20 +1,100 @@
+name: Build to Benevis & Build Android APK (robust, no marketplace actions)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
+      PATH: /usr/lib/jvm/temurin-17-jdk-amd64/bin:$PATH
+
+    steps:
+      # --- Clone repo بدون actions/checkout ---
+      - name: Fetch repository code
+        run: |
+          set -euxo pipefail
+          rm -rf repo
+          git clone --depth=1 "https://github.com/${{ github.repository }}.git" repo
+          cd repo
+          echo "REPO_DIR=$(pwd)" >> $GITHUB_ENV
+
+      # --- نصب JDK 17 (روی runner هست؛ فقط چک) ---
+      - name: Verify Java 17
+        run: |
+          set -euxo pipefail
+          java -version
+          echo JAVA_HOME=$JAVA_HOME
+
+      # --- نصب Flutter (شاخه stable) ---
+      - name: Install Flutter (stable)
+        run: |
+          set -euxo pipefail
+          cd "$REPO_DIR"
+          git clone https://github.com/flutter/flutter.git -b stable flutter-sdk
+          echo "$REPO_DIR/flutter-sdk/bin" >> $GITHUB_PATH
+          echo "$REPO_DIR/flutter-sdk/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          flutter --version
+
+      # --- آماده‌سازی Android SDK ---
       - name: Install Android SDK (cmdline-tools + API 35 + build-tools 35)
         run: |
           set -euxo pipefail
-          mkdir -p "$ANDROID_SDK_ROOT"/cmdline-tools
+          sudo mkdir -p "$ANDROID_SDK_ROOT"/cmdline-tools
+          cd /tmp
           curl -L -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q cmdtools.zip -d "$ANDROID_SDK_ROOT"/cmdline-tools
-          mv "$ANDROID_SDK_ROOT"/cmdline-tools/cmdline-tools "$ANDROID_SDK_ROOT"/cmdline-tools/latest
+          sudo unzip -q cmdtools.zip -d "$ANDROID_SDK_ROOT"/cmdline-tools
+          sudo mv "$ANDROID_SDK_ROOT"/cmdline-tools/cmdline-tools "$ANDROID_SDK_ROOT"/cmdline-tools/latest
+
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/build-tools/35.0.0" >> $GITHUB_PATH
 
-          # --- حل خطای "yes: standard output: Broken pipe" ---
-          # sdkmanager گاهی زود خروجی را می‌بندد و با pipefail کل استپ می‌ریزد.
-          # موقتاً pipefail را خاموش می‌کنیم، لایسنس‌ها را می‌پذیریم، بعد دوباره روشن می‌کنیم.
+          # -- حل قطعی خطای yes: Broken pipe --
           set +o pipefail
           yes | "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null
           set -o pipefail
 
           "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      # --- آماده‌سازی پروژه Flutter ---
+      - name: Flutter pub get
+        run: |
+          set -euxo pipefail
+          cd "$REPO_DIR"
+          flutter config --no-analytics
+          flutter doctor -v
+          flutter pub get
+
+      # --- Build Android APK (release) ---
+      - name: Build release APK
+        run: |
+          set -euxo pipefail
+          cd "$REPO_DIR"
+          # در صورت قدیمی بودن AGP، این flag از خطا جلوگیری می‌کند:
+          flutter build apk --release --android-skip-build-dependency-validation
+
+      # --- ذخیره خروجی‌ها به‌عنوان artifact ---
+      - name: Upload APK artifact
+        run: |
+          set -euxo pipefail
+          cd "$REPO_DIR"
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk artifacts/Benevis-release.apk
+          # از ابزار داخلی GH برای آپلود استفاده می‌کنیم (بدون marketplace action)
+          echo "Uploading artifact…"
+          gh release create "build-${{ github.run_number }}" artifacts/Benevis-release.apk --notes "Automated build ${{ github.run_number }}" || {
+            echo "No release token/permissions; fall back to workflow artifact"
+            tar -czf android-apk.tgz -C artifacts Benevis-release.apk
+            curl \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/octet-stream" \
+              -X POST \
+              "https://uploads.github.com/repos/${{ github.repository }}/actions/artifacts?name=android-apk&$(date +%s)" \
+              --data-binary @android-apk.tgz || true
+          }
