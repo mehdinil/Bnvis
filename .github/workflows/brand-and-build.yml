@@ -1,4 +1,4 @@
-name: Brand to Benvis & Build Android APK (no marketplace actions)
+name: Brand to Benvis & Build Android APK (raw)
 
 on:
   workflow_dispatch:
@@ -6,105 +6,81 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      FLUTTER_HOME: ${{ github.workspace }}/flutter
+      APP_DIR: ${{ github.workspace }}/app
+
     steps:
-      - name: Checkout (no marketplace action)
-        shell: bash
+      - name: Show runner info
         run: |
-          set -euxo pipefail
-          git init .
-          git remote add origin https://github.com/${{ github.repository }}.git
-          git fetch --depth=1 origin ${{ github.ref_name || 'main' }}
-          git checkout -f FETCH_HEAD
+          uname -a
+          df -h
+          echo "Repo: $GITHUB_REPOSITORY  Run: $GITHUB_RUN_ID"
 
-      - name: Patch branding to Benvis
-        shell: bash
+      # کد را بدون actions/checkout کلون می‌کنیم
+      - name: Clone repository
         run: |
-          set -euxo pipefail
-          PROJ=goalpad
-          # 1) Android label
-          test -f $PROJ/android/app/src/main/AndroidManifest.xml && \
-            sed -i 's/android:label=\"[^\"]*\"/android:label=\"Benvis\"/' $PROJ/android/app/src/main/AndroidManifest.xml || true
+          git clone --depth=1 https://github.com/${GITHUB_REPOSITORY}.git "$APP_DIR"
+          ls -la "$APP_DIR"
 
-          # 2) Settings title
-          test -f $PROJ/lib/features/journal/ui/pages/settings_page.dart && \
-            sed -i 's/Tablo Settings/Benvis/g' $PROJ/lib/features/journal/ui/pages/settings_page.dart || true
+      - name: Install base deps & JDK 17
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y curl unzip xz-utils zip libglu1-mesa openjdk-17-jdk
 
-          # 3) App title & theme (Material3 purple)
-          if [ -f $PROJ/lib/main.dart ]; then
-            perl -0777 -pe "s/title:\s*'[^']*'/title: 'Benvis'/g" -i $PROJ/lib/main.dart || true
-            perl -0777 -pe "s/ThemeData\([^)]*\)/ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF7C3AED)),)/" -i $PROJ/lib/main.dart || true
-          fi
+      - name: Install Android SDK (cmdline-tools)
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT"/cmdline-tools
+          curl -L -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdtools.zip -d "$ANDROID_SDK_ROOT"/cmdline-tools
+          mv "$ANDROID_SDK_ROOT"/cmdline-tools/cmdline-tools "$ANDROID_SDK_ROOT"/cmdline-tools/latest
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/build-tools/35.0.0" >> $GITHUB_PATH
+          yes | "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --licenses
+          "$ANDROID_SDK_ROOT"/cmdline-tools/latest/bin/sdkmanager --install \
+            "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-          # 4) Adaptive icon background (purple)
-          mkdir -p $PROJ/android/app/src/main/res/values
-          cat > $PROJ/android/app/src/main/res/values/ic_launcher_background.xml <<'XML'
-          <?xml version="1.0" encoding="utf-8"?>
+      - name: Install Flutter (stable)
+        run: |
+          git clone --depth=1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+          echo "$FLUTTER_HOME/bin" >> $GITHUB_PATH
+          echo "$FLUTTER_HOME/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          flutter --version
+          flutter doctor -v
+
+      - name: Brand app to Benevis (name/label)
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          mkdir -p android/app/src/main/res/values
+          cat > android/app/src/main/res/values/strings.xml <<'XML'
           <resources>
-            <color name="ic_launcher_background">#7C3AED</color>
+            <string name="app_name">Benevis</string>
           </resources>
           XML
-
-      - name: Bump Gradle/AGP to safe combo
-        shell: bash
-        run: |
-          set -euxo pipefail
-          PROJ=goalpad/android
-          # Gradle wrapper 8.4
-          if [ -f $PROJ/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's/gradle-[0-9.]*-all.zip/gradle-8.4-all.zip/' $PROJ/gradle/wrapper/gradle-wrapper.properties || true
-          fi
-          # AGP 8.4.0 in settings.gradle or build.gradle
-          if [ -f $PROJ/settings.gradle ]; then
-            sed -i 's/id "com.android.application" version "[^"]*"/id "com.android.application" version "8.4.0"/' $PROJ/settings.gradle || true
-            sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.23"/' $PROJ/settings.gradle || true
-          fi
-          if [ -f $PROJ/build.gradle ]; then
-            sed -i "s/classpath 'com.android.tools.build:gradle:[^']*'/classpath 'com.android.tools.build:gradle:8.4.0'/" $PROJ/build.gradle || true
-          fi
-
-      - name: Show Java
-        run: java -version
-
-      - name: Accept Android licenses & ensure SDK
-        shell: bash
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT || '/usr/lib/android-sdk' }}
-        run: |
-          set -euxo pipefail
-          if [ -d "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" ]; then
-            yes | sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses || true
-            sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" || true
-          else
-            echo 'cmdline-tools not found, skipping explicit install'
-          fi
-
-      - name: Setup Flutter (no marketplace action)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git clone https://github.com/flutter/flutter.git -b stable
-          echo "$PWD/flutter/bin" >> $GITHUB_PATH
-          echo "$PWD/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-          flutter --version
+          sed -i 's/android:label="[^"]*"/android:label="@string\/app_name"/' android/app/src/main/AndroidManifest.xml || true
+          echo "Label set to Benevis."
 
       - name: Flutter pub get
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd goalpad
-          flutter pub get
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
 
-      - name: Build APK (debug)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd goalpad
-          flutter build apk --debug
+      - name: Build release APK
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter build apk --release
 
-      - name: Upload APK artifact via gh CLI
+      # انتشار APK به‌صورت Release (بدون actions/upload-artifact)
+      - name: Publish GitHub Release with APK
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euxo pipefail
-          gh run upload-artifact --name android-apk goalpad/build/app/outputs/flutter-apk/*.apk
+          APK_PATH="${APP_DIR}/build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$APK_PATH"
+          TAG="ci-build-${GITHUB_RUN_ID}"
+          gh release create "$TAG" "$APK_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Benevis APK (CI ${GITHUB_RUN_ID})" \
+            --notes "Automated build from Actions"
