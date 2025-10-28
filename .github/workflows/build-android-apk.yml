@@ -19,27 +19,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      # 2) Java 17 — SHA pinned (no cache)
+      # 2) Java 17 — SHA pinned
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@2dfa2011c5b2a0f1489bf9e433881c92c1631f88 # v4.3.0
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3) Install Flutter from git — NO marketplace action to avoid cache
+      # 3) Install Flutter from git
       - name: Install Flutter (stable)
-        shell: bash
         run: |
           set -e
           git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter"
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
-          flutter --version
-          flutter config --no-analytics
-          flutter precache
 
       # 4) Install Android SDK manually
-      - name: Install Android SDK cmdline-tools
-        shell: bash
+      - name: Install Android SDK
         run: |
           set -e
           mkdir -p "$HOME/android-sdk"
@@ -54,9 +49,8 @@ jobs:
           echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
 
-      # 5) Accept licenses & install SDK 36
+      # 5) Accept licenses & install SDK
       - name: Install Android SDK components
-        shell: bash
         run: |
           set -e
           yes | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses || true
@@ -69,150 +63,98 @@ jobs:
             "platforms;android-34" \
             "build-tools;34.0.0"
 
-      # 6) Install unzip tool
-      - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y unzip
-
-      # 7) Unzip project if ZIP exists
-      - name: Unzip project if ZIP exists
+      # 6) Verify Flutter is working
+      - name: Verify Flutter installation
         run: |
-          shopt -s nullglob
-          mkdir -p unzipped
-          zips=( *.zip **/*.zip )
-          if [ ${#zips[@]} -gt 0 ]; then
-            echo "Found ZIP(s): ${zips[@]}"
-            for z in "${zips[@]}"; do unzip -q "$z" -d unzipped ; done
-            echo "unzipped=true" >> $GITHUB_ENV
-          else
-            echo "unzipped=false" >> $GITHUB_ENV
-          fi
+          export PATH="$HOME/flutter/bin:$PATH"
+          which flutter
+          flutter --version
+          flutter doctor -v
 
-      # 8) Auto-detect project
-      - name: Locate Flutter project (pubspec.yaml)
+      # 7) Locate Flutter project
+      - name: Locate Flutter project
         id: findproj
-        shell: bash
         run: |
           set -e
-          SEARCH_DIR="."
-          if [ "$unzipped" = "true" ]; then SEARCH_DIR="unzipped"; fi
-          
-          # First try benvis directory
           if [ -d "benvis" ] && [ -f "benvis/pubspec.yaml" ]; then
             echo "project=benvis" >> "$GITHUB_OUTPUT"
-            echo "Detected project at: benvis"
-            exit 0
-          fi
-          
-          # Otherwise search
-          PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 4 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "No Flutter project found" >&2
+            echo "Found project: benvis"
+          else
+            echo "ERROR: benvis/pubspec.yaml not found!"
+            ls -la
             exit 1
           fi
-          echo "project=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Detected project at: $PROJECT_DIR"
 
-      # 9) Create adaptive build script
-      - name: Create adaptive build script
+      # 8) Prepare Android config
+      - name: Prepare Android configuration
+        working-directory: ${{ steps.findproj.outputs.project }}
         run: |
-          cat > ci-build.sh << 'BUILDSCRIPT'
-          #!/bin/bash
           set -e
+          mkdir -p android/gradle/wrapper
           
-          # Ensure Flutter is in PATH
-          export PATH="$HOME/flutter/bin:$PATH"
+          # Set Gradle 8.7
+          echo "distributionUrl=https://services.gradle.org/distributions/gradle-8.7-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
           
-          PROJECT_DIR="$1"
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Project directory not provided"
-            exit 1
-          fi
+          # Configure gradle.properties
+          cat >> android/gradle.properties << EOF
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+          EOF
           
-          echo "Building project at: $PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          
-          LOG="$GITHUB_WORKSPACE/apk_build_log.txt"
-          : > "$LOG"
-          
-          ensure_basics() {
-            mkdir -p android
-            touch android/gradle.properties
-            grep -q 'android.useAndroidX' android/gradle.properties || echo 'android.useAndroidX=true' >> android/gradle.properties
-            grep -q 'android.enableJetifier' android/gradle.properties || echo 'android.enableJetifier=true' >> android/gradle.properties
-            grep -q 'org.gradle.jvmargs' android/gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m' >> android/gradle.properties
-            
-            if [ -f android/app/build.gradle ]; then
-              sed -i 's/compileSdk *= *[0-9]\+/compileSdk = 36/' android/app/build.gradle || true
-              sed -i 's/targetSdk *= *[0-9]\+/targetSdk = 36/' android/app/build.gradle || true
-            fi
-          }
-          
-          patch_gradle() {
-            V="$1"
-            mkdir -p android/gradle/wrapper
-            echo "distributionUrl=https://services.gradle.org/distributions/gradle-${V}-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-          }
-          
-          fix_issues() {
-            if grep -q "PluginRegistry" "$LOG" 2>/dev/null; then
-              sed -i -E 's/file_picker: *[^ ]*/file_picker: ^8.0.0/' pubspec.yaml 2>/dev/null || true
-            fi
-            
-            if grep -E "minSdkVersion +[0-9]+" "$LOG" >/dev/null 2>&1; then
-              REQ=$(grep -E "minSdkVersion +[0-9]+" "$LOG" | head -1 | grep -o '[0-9]\+' | head -1)
-              if [ -n "$REQ" ] && [ -f android/app/build.gradle ]; then
-                sed -i -E "s/minSdk *= *[0-9]+/minSdk = ${REQ}/" android/app/build.gradle || true
-              fi
-            fi
-          }
-          
-          try_build() {
-            flutter --version 2>&1 | tee -a "$LOG"
-            flutter pub get 2>&1 | tee -a "$LOG"
-            flutter build apk --release --split-per-abi 2>&1 | tee -a "$LOG"
-            return ${PIPESTATUS[0]}
-          }
-          
-          ensure_basics
-          patch_gradle "8.7"
-          
-          for i in 1 2 3 4; do
-            echo "=== Attempt $i/4 ===" | tee -a "$LOG"
-            if try_build; then
-              echo "BUILD_OK" | tee -a "$LOG"
-              exit 0
-            fi
-            
-            if grep -E "Minimum supported Gradle version is +([0-9.]+)" "$LOG" >/dev/null; then
-              NEWG=$(grep -E "Minimum supported Gradle version is +([0-9.]+)" "$LOG" | head -1 | grep -oE '[0-9.]+' | head -1)
-              if [ -n "$NEWG" ]; then
-                echo "Upgrading Gradle to $NEWG" | tee -a "$LOG"
-                patch_gradle "$NEWG"
-                continue
-              fi
-            fi
-            
-            fix_issues
-          done
-          
-          echo "BUILD_FAILED" | tee -a "$LOG"
-          exit 1
-          BUILDSCRIPT
-          
-          chmod +x ci-build.sh
+          echo "Android config prepared"
 
-      # 10) Run build
-      - name: Run adaptive build
+      # 9) Flutter pub get
+      - name: Flutter pub get
+        working-directory: ${{ steps.findproj.outputs.project }}
         run: |
           export PATH="$HOME/flutter/bin:$PATH"
-          bash "$GITHUB_WORKSPACE/ci-build.sh" "${{ steps.findproj.outputs.project }}"
+          flutter pub get
 
-      # 11) Upload artifacts — SHA pinned
-      - name: Upload APK and logs
+      # 10) Build APK (attempt 1)
+      - name: Build APK (Attempt 1)
+        id: build1
+        continue-on-error: true
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter build apk --release --split-per-abi
+
+      # 11) If failed, try with Gradle 8.9
+      - name: Build APK (Attempt 2 - Gradle 8.9)
+        if: steps.build1.outcome == 'failure'
+        id: build2
+        continue-on-error: true
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          echo "distributionUrl=https://services.gradle.org/distributions/gradle-8.9-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          flutter clean
+          flutter pub get
+          flutter build apk --release --split-per-abi
+
+      # 12) If still failed, try universal APK
+      - name: Build APK (Attempt 3 - Universal)
+        if: steps.build1.outcome == 'failure' && steps.build2.outcome == 'failure'
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter build apk --release
+
+      # 13) List generated APKs
+      - name: List APK files
+        if: always()
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: |
+          echo "=== APK Output Directory ==="
+          ls -lah build/app/outputs/flutter-apk/ || echo "No APK directory found"
+
+      # 14) Upload artifacts — SHA pinned
+      - name: Upload APK artifacts
         if: always()
         uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
         with:
           name: android-apk
           path: |
             ${{ steps.findproj.outputs.project }}/build/app/outputs/flutter-apk/*.apk
-            ${{ github.workspace }}/apk_build_log.txt
+          if-no-files-found: warn
