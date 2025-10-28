@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
 
       # 3) Install Flutter from git — NO actions/cache
-            - name: Install Flutter (stable)
+      - name: Install Flutter (stable)
         shell: bash
         run: |
           set -euo pipefail
