@@ -114,13 +114,21 @@ jobs:
 
       # 9) Create adaptive build script
       - name: Create adaptive build script
-        env:
-          PROJ: ${{ steps.findproj.outputs.project }}
         run: |
           cat > ci-build.sh << 'BUILDSCRIPT'
           #!/bin/bash
           set -e
-          PROJECT_DIR="${PROJ}"
+          
+          # Ensure Flutter is in PATH
+          export PATH="$HOME/flutter/bin:$PATH"
+          
+          PROJECT_DIR="$1"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Project directory not provided"
+            exit 1
+          fi
+          
+          echo "Building project at: $PROJECT_DIR"
           cd "$PROJECT_DIR"
           
           LOG="$GITHUB_WORKSPACE/apk_build_log.txt"
@@ -159,6 +167,7 @@ jobs:
           }
           
           try_build() {
+            flutter --version 2>&1 | tee -a "$LOG"
             flutter pub get 2>&1 | tee -a "$LOG"
             flutter build apk --release --split-per-abi 2>&1 | tee -a "$LOG"
             return ${PIPESTATUS[0]}
@@ -194,8 +203,9 @@ jobs:
 
       # 10) Run build
       - name: Run adaptive build
-        working-directory: ${{ steps.findproj.outputs.project }}
-        run: bash "$GITHUB_WORKSPACE/ci-build.sh"
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          bash "$GITHUB_WORKSPACE/ci-build.sh" "${{ steps.findproj.outputs.project }}"
 
       # 11) Upload artifacts — SHA pinned
       - name: Upload APK and logs
