@@ -25,8 +25,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-level: 34
-          build-tools: '34.0.0'
+          api-level: 36
+          build-tools: '35.0.0'
           accept-licenses: true
 
       - name: Install tools
@@ -90,8 +90,8 @@ jobs:
 
             # compile/target/jvmTarget
             if [ -f android/app/build.gradle ]; then
-              sed -i 's/compileSdk[[:space:]]*[0-9]\+/compileSdk 34/' android/app/build.gradle || true
-              sed -i 's/targetSdk[[:space:]]*[0-9]\+/targetSdk 34/' android/app/build.gradle || true
+              sed -i 's/compileSdk[[:space:]]*=[[:space:]]*[0-9]\+/compileSdk = 36/' android/app/build.gradle || true
+              sed -i 's/targetSdk[[:space:]]*=[[:space:]]*[0-9]\+/targetSdk = 36/' android/app/build.gradle || true
               grep -q 'kotlinOptions' android/app/build.gradle || printf '\nandroid {\n    kotlinOptions { jvmTarget = "17" }\n}\n' >> android/app/build.gradle
             fi
           }
@@ -121,11 +121,11 @@ EOF
             if grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" >/dev/null; then
               REQ=$(grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" | sed -E 's/.*minSdkVersion[[:space:]]+([0-9]+).*/\1/')
               if [ -n "$REQ" ]; then
-                if grep -q "minSdkVersion" android/app/build.gradle 2>/dev/null; then
-                  sed -i -E "s/minSdkVersion[[:space:]]+[0-9]+/minSdkVersion ${REQ}/" android/app/build.gradle || true
+                if grep -q "minSdk" android/app/build.gradle 2>/dev/null; then
+                  sed -i -E "s/minSdk[[:space:]]*=[[:space:]]*[0-9]+/minSdk = ${REQ}/" android/app/build.gradle || true
                 else
                   # append a defaultConfig if missing
-                  printf '\nandroid {\n  defaultConfig { minSdkVersion %s }\n}\n' "$REQ" >> android/app/build.gradle
+                  printf '\nandroid {\n  defaultConfig { minSdk = %s }\n}\n' "$REQ" >> android/app/build.gradle
                 fi
               fi
             fi
