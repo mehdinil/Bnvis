@@ -1,0 +1,108 @@
+name: Build Benvis Android APK (no marketplace actions)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ benvis-build ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+    steps:
+      - name: Checkout (native git)
+        run: |
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_REF_NAME}"
+          git checkout -B "${GITHUB_REF_NAME}" "origin/${GITHUB_REF_NAME}"
+          git status -s
+
+      - name: Install system deps (JDK, tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk curl unzip xz-utils zip git
+
+      - name: Install Flutter (stable) without action
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
+          echo "${GITHUB_WORKSPACE}/flutter/bin" >> $GITHUB_PATH
+          echo "${GITHUB_WORKSPACE}/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          flutter/bin/flutter --version
+
+      - name: Install Android SDK cmdline-tools
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT"
+          cd "$ANDROID_SDK_ROOT"
+          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          rm -f cmdline-tools.zip
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+          ls -la cmdline-tools/latest
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+
+      - name: Accept licenses & install platforms
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-36" "build-tools;36.0.0" || \
+            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+          "$ANDROID_SDK_ROOT/platform-tools/adb" --version
+
+      - name: Detect Flutter project dir
+        id: paths
+        run: |
+          set -e
+          FILE=$(git ls-files '**/pubspec.yaml' | grep -E '(benvis|^)pubspec.yaml' | head -n1)
+          if [ -z "$FILE" ]; then echo "No pubspec.yaml found"; exit 1; fi
+          DIR=$(dirname "$FILE")
+          echo "PROJECT=$DIR" | tee project_dir.txt
+          echo "PROJECT=$DIR" >> $GITHUB_OUTPUT
+          echo "Detected project dir: $DIR"
+
+      - name: Flutter doctor
+        run: |
+          flutter doctor -v
+
+      - name: Build APKs (debug + release)
+        run: |
+          cd "$(cut -d='=' -f2 project_dir.txt)"
+          flutter clean
+          flutter pub get
+          flutter build apk --debug
+          # attempt release; if fails, skip (unsigned builds are okay)
+          flutter build apk --release || echo "⚠️ Release build skipped (may need signing)"
+          ls -lh build/app/outputs/flutter-apk
+
+      - name: Create GitHub Release and upload APKs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$(cut -d='=' -f2 project_dir.txt)"
+          TAG="benvis-${GITHUB_RUN_NUMBER}"
+          TITLE="Benvis APK #${GITHUB_RUN_NUMBER}"
+          NOTES="Automated build from branch: ${GITHUB_REF_NAME}"
+          
+          # Install gh if not available
+          which gh || (curl -sL https://github.com/cli/cli/releases/download/v2.40.1/gh_2.40.1_linux_amd64.tar.gz | tar xz && sudo mv gh_*/bin/gh /usr/local/bin/)
+          
+          gh release create "$TAG" \
+            build/app/outputs/flutter-apk/app-debug.apk \
+            build/app/outputs/flutter-apk/app-release.apk \
+            --title "$TITLE" --notes "$NOTES" || \
+          gh release upload "$TAG" \
+            build/app/outputs/flutter-apk/app-debug.apk \
+            build/app/outputs/flutter-apk/app-release.apk --clobber
+
+      - name: Done
+        run: echo "✅ Build finished. Check Releases for APKs."

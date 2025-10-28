@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'goalpad/**'
+      - 'benvis/**'
       - '.github/workflows/build-android-apk.yml'
 
 permissions:
@@ -55,8 +55,8 @@ jobs:
         id: findproj
         run: |
           set -e
-          if [ -f "goalpad/pubspec.yaml" ]; then
-            echo "project=goalpad" >> $GITHUB_OUTPUT
+          if [ -f "benvis/pubspec.yaml" ]; then
+            echo "project=benvis" >> $GITHUB_OUTPUT
           else
             PROJECT_DIR=$(find . -maxdepth 5 -type f -name pubspec.yaml | head -n 1 | xargs -I{} dirname {})
             [ -z "$PROJECT_DIR" ] && { echo "❌ No Flutter project found"; exit 1; }
