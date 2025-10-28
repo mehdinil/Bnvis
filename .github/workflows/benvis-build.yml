@@ -1,72 +1,102 @@
-name: Build Benvis Android APK
+name: Build Android APK (from ZIP)
 
 on:
   workflow_dispatch:
   push:
-    branches: [ benvis-build ]
+    paths:
+      - '**.zip'
+      - '**/pubspec.yaml'
+      - '.github/workflows/build-android-apk.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      PROJECT_DIR: benvis
-      API_LEVEL: ${{ vars.BENVIS_API_LEVEL || 'auto' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
 
-      - name: Set up Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter (stable)
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          build-tools: '34.0.0'
+          accept-licenses: true
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Unzip project if a ZIP exists
+        run: |
+          shopt -s nullglob
+          mkdir -p unzipped
+          zips=( *.zip **/*.zip )
+          if [ ${#zips[@]} -gt 0 ]; then
+            echo "Found ZIP(s): ${zips[@]}"
+            for z in "${zips[@]}"; do unzip -q "$z" -d unzipped ; done
+            echo "unzipped=true" >> $GITHUB_ENV
+          else
+            echo "unzipped=false" >> $GITHUB_ENV
+          fi
+
+      - name: Locate Flutter project (pubspec.yaml)
+        id: findproj
+        run: |
+          set -e
+          SEARCH_DIR="."
+          if [ "$unzipped" = "true" ]; then SEARCH_DIR="unzipped"; fi
+          PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 4 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "❌ No Flutter project (pubspec.yaml) found." >&2
+            exit 1
+          fi
+          echo "project=$PROJECT_DIR" >> $GITHUB_OUTPUT
+          echo "Detected project at: $PROJECT_DIR"
+
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Detect compileSdk & buildTools from project
-        id: detect
+      # ---- Fix: Gradle 8.7 ----
+      - name: Patch Android Gradle (set Gradle 8.7)
+        working-directory: ${{ steps.findproj.outputs.project }}/android
         run: |
-          FILE="benvis/android/app/build.gradle"
-          API=$(grep -Eo 'compileSdk[Version]*\s*[:=]\s*[0-9]+' "$FILE" | grep -Eo '[0-9]+' | head -1 || true)
-          BT=$(grep -Eo 'buildToolsVersion\s*["'\'']([0-9.]+)["'\'']' "$FILE" | grep -Eo '[0-9. ]+' | tr -d ' ' | head -1 || true)
-          [ -z "$API" ] && API=35
-          [ -z "$BT" ] && BT="${API}.0.0"
-          echo "api=$API"   >> $GITHUB_OUTPUT
-          echo "bt=$BT"     >> $GITHUB_OUTPUT
-          echo "Detected API=$API, build-tools=$BT"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        run: |
-          API="${{ steps.detect.outputs.api }}"
-          BT="${{ steps.detect.outputs.bt }}"
-          sdkmanager "platforms;android-${API}" "build-tools;${BT}"
-
-      - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses
+          set -e
+          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+            sed -i 's#distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-8.7-all.zip#' gradle/wrapper/gradle-wrapper.properties || true
+            sed -i '/distributionSha256/d' gradle/wrapper/gradle-wrapper.properties || true
+          fi
+          if [ -f app/build.gradle ]; then
+            sed -i 's/compileSdk[[:space:]]*[0-9]\+/compileSdk 34/' app/build.gradle || true
+            sed -i 's/targetSdk[[:space:]]*[0-9]\+/targetSdk 34/' app/build.gradle || true
+            grep -q 'kotlinOptions' app/build.gradle || printf '\nandroid {\n    kotlinOptions { jvmTarget = "17" }\n}\n' >> app/build.gradle
+          fi
+          touch ../gradle.properties
+          grep -q '^android.useAndroidX=true' ../gradle.properties || echo 'android.useAndroidX=true' >> ../gradle.properties
+          grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
+          grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
 
       - name: Flutter pub get
-        working-directory: benvis
+        working-directory: ${{ steps.findproj.outputs.project }}
         run: flutter pub get
 
-      - name: Build Debug APK
-        working-directory: benvis
-        run: flutter build apk --debug
+      - name: Build APK (release)
+        working-directory: ${{ steps.findproj.outputs.project }}
+        run: |
+          flutter --version
+          ./android/gradlew -v || true
+          flutter build apk --release --split-per-abi || flutter build apk --release
 
-      - name: Build Release APK
-        working-directory: benvis
-        run: flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APKs
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: benvis-apks
+          name: android-apk
           path: |
-            benvis/build/app/outputs/flutter-apk/app-debug.apk
-            benvis/build/app/outputs/flutter-apk/app-release.apk
+            ${{ steps.findproj.outputs.project }}/build/app/outputs/flutter-apk/*.apk
