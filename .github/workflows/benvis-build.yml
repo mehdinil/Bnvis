@@ -1,0 +1,72 @@
+name: Build Benvis Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ benvis-build ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_DIR: benvis
+      API_LEVEL: ${{ vars.BENVIS_API_LEVEL || 'auto' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Detect compileSdk & buildTools from project
+        id: detect
+        run: |
+          FILE="benvis/android/app/build.gradle"
+          API=$(grep -Eo 'compileSdk[Version]*\s*[:=]\s*[0-9]+' "$FILE" | grep -Eo '[0-9]+' | head -1 || true)
+          BT=$(grep -Eo 'buildToolsVersion\s*["'\'']([0-9.]+)["'\'']' "$FILE" | grep -Eo '[0-9. ]+' | tr -d ' ' | head -1 || true)
+          [ -z "$API" ] && API=35
+          [ -z "$BT" ] && BT="${API}.0.0"
+          echo "api=$API"   >> $GITHUB_OUTPUT
+          echo "bt=$BT"     >> $GITHUB_OUTPUT
+          echo "Detected API=$API, build-tools=$BT"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          API="${{ steps.detect.outputs.api }}"
+          BT="${{ steps.detect.outputs.bt }}"
+          sdkmanager "platforms;android-${API}" "build-tools;${BT}"
+
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Flutter pub get
+        working-directory: benvis
+        run: flutter pub get
+
+      - name: Build Debug APK
+        working-directory: benvis
+        run: flutter build apk --debug
+
+      - name: Build Release APK
+        working-directory: benvis
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: benvis-apks
+          path: |
+            benvis/build/app/outputs/flutter-apk/app-debug.apk
+            benvis/build/app/outputs/flutter-apk/app-release.apk
