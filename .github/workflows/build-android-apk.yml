@@ -27,15 +27,25 @@ jobs:
           java-version: '17'
 
       # 3) Install Flutter from git — NO actions/cache
-      - name: Install Flutter (stable)
+            - name: Install Flutter (stable)
         shell: bash
         run: |
-          set -e
-          git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$HOME/flutter"
-          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          FLUTTER_HOME="$HOME/flutter"
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_HOME"
+
+          # برای استپ‌های بعدی
+          echo "$FLUTTER_HOME/bin" >> "$GITHUB_PATH"
+
+          # برای همین استپ
+          export PATH="$FLUTTER_HOME/bin:$PATH"
+
+          # چک و آماده‌سازی
           flutter --version
           flutter config --no-analytics
-          flutter precache
+          flutter doctor -v
+          flutter precache --android
+
 
       # 4) Auto-detect project (benvis/ or first pubspec.yaml up to depth 4)
       - name: Locate Flutter project
