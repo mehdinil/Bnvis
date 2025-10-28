@@ -106,127 +106,96 @@ jobs:
           # Otherwise search
           PROJECT_DIR=$(find "$SEARCH_DIR" -maxdepth 4 -type f -name "pubspec.yaml" | head -n 1 | xargs -I{} dirname {})
           if [ -z "$PROJECT_DIR" ]; then
-            echo "❌ No Flutter project (pubspec.yaml) found." >&2
+            echo "No Flutter project found" >&2
             exit 1
           fi
           echo "project=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Detected project at: $PROJECT_DIR"
 
-      # 9) Create adaptive build script with multi-attempt logic
+      # 9) Create adaptive build script
       - name: Create adaptive build script
         env:
           PROJ: ${{ steps.findproj.outputs.project }}
         run: |
-          set -e
-          cat > ci-build.sh <<'BASH'
+          cat > ci-build.sh << 'BUILDSCRIPT'
+          #!/bin/bash
           set -e
           PROJECT_DIR="${PROJ}"
           cd "$PROJECT_DIR"
-
-          LOG_ROOT="$GITHUB_WORKSPACE"
-          LOG="$LOG_ROOT/apk_build_log.txt"
+          
+          LOG="$GITHUB_WORKSPACE/apk_build_log.txt"
           : > "$LOG"
-
-          ensure_android_basics() {
+          
+          ensure_basics() {
             mkdir -p android
-            # gradle.properties
             touch android/gradle.properties
-            grep -q '^android.useAndroidX=' android/gradle.properties || echo 'android.useAndroidX=true' >> android/gradle.properties
-            grep -q '^android.enableJetifier=' android/gradle.properties || echo 'android.enableJetifier=true' >> android/gradle.properties
-            grep -q '^org.gradle.jvmargs=' android/gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> android/gradle.properties
-
-            # compile/target/jvmTarget - use Kotlin DSL syntax
+            grep -q 'android.useAndroidX' android/gradle.properties || echo 'android.useAndroidX=true' >> android/gradle.properties
+            grep -q 'android.enableJetifier' android/gradle.properties || echo 'android.enableJetifier=true' >> android/gradle.properties
+            grep -q 'org.gradle.jvmargs' android/gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m' >> android/gradle.properties
+            
             if [ -f android/app/build.gradle ]; then
-              sed -i 's/compileSdk[[:space:]]*=[[:space:]]*[0-9]\+/compileSdk = 36/' android/app/build.gradle || true
-              sed -i 's/targetSdk[[:space:]]*=[[:space:]]*[0-9]\+/targetSdk = 36/' android/app/build.gradle || true
-              grep -q 'kotlinOptions' android/app/build.gradle || printf '\nandroid {\n    kotlinOptions { jvmTarget = "17" }\n}\n' >> android/app/build.gradle
+              sed -i 's/compileSdk *= *[0-9]\+/compileSdk = 36/' android/app/build.gradle || true
+              sed -i 's/targetSdk *= *[0-9]\+/targetSdk = 36/' android/app/build.gradle || true
             fi
           }
-
-          patch_gradle_wrapper() {
+          
+          patch_gradle() {
             V="$1"
             mkdir -p android/gradle/wrapper
-            if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-              sed -i "s#distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-${V}-all.zip#" android/gradle/wrapper/gradle-wrapper.properties || true
-              sed -i '/distributionSha256/d' android/gradle/wrapper/gradle-wrapper.properties || true
-            else
-              cat > android/gradle/wrapper/gradle-wrapper.properties <<EOF
-distributionUrl=https\://services.gradle.org/distributions/gradle-${V}-all.zip
-EOF
-            fi
+            echo "distributionUrl=https://services.gradle.org/distributions/gradle-${V}-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
           }
-
-          fix_common_plugin_issues_if_needed() {
-            # file_picker V1 embedding → bump to ^8
-            if grep -q "PluginRegistry\\.Registrar" "$LOG" || grep -qi "Flutter v1" "$LOG"; then
-              if [ -f pubspec.yaml ]; then
-                sed -i -E 's/(^|[[:space:]])file_picker:[[:space:]]*\^?[0-9.]+/file_picker: ^8.0.0/' pubspec.yaml || true
-              fi
+          
+          fix_issues() {
+            if grep -q "PluginRegistry" "$LOG" 2>/dev/null; then
+              sed -i -E 's/file_picker: *[^ ]*/file_picker: ^8.0.0/' pubspec.yaml 2>/dev/null || true
             fi
-
-            # minSdk mismatch (e.g., "uses-sdk:minSdkVersion X ...")
-            if grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" >/dev/null; then
-              REQ=$(grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" | sed -E 's/.*minSdkVersion[[:space:]]+([0-9]+).*/\1/')
-              if [ -n "$REQ" ]; then
-                if grep -q "minSdk" android/app/build.gradle 2>/dev/null; then
-                  sed -i -E "s/minSdk[[:space:]]*=[[:space:]]*[0-9]+/minSdk = ${REQ}/" android/app/build.gradle || true
-                else
-                  # append a defaultConfig if missing
-                  printf '\nandroid {\n  defaultConfig { minSdk = %s }\n}\n' "$REQ" >> android/app/build.gradle
-                fi
+            
+            if grep -E "minSdkVersion +[0-9]+" "$LOG" >/dev/null 2>&1; then
+              REQ=$(grep -E "minSdkVersion +[0-9]+" "$LOG" | head -1 | grep -o '[0-9]\+' | head -1)
+              if [ -n "$REQ" ] && [ -f android/app/build.gradle ]; then
+                sed -i -E "s/minSdk *= *[0-9]+/minSdk = ${REQ}/" android/app/build.gradle || true
               fi
             fi
           }
-
-          attempt_build() {
-            set +e
+          
+          try_build() {
             flutter pub get 2>&1 | tee -a "$LOG"
             flutter build apk --release --split-per-abi 2>&1 | tee -a "$LOG"
-            local rc=${PIPESTATUS[0]}
-            set -e
-            return $rc
+            return ${PIPESTATUS[0]}
           }
-
-          ensure_android_basics
-
-          # Start with Gradle 8.7; adapt if logs demand higher
-          patch_gradle_wrapper "8.7"
-
-          ATTEMPT=1
-          MAX_ATTEMPTS=4
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "==== Attempt $ATTEMPT/$MAX_ATTEMPTS ====" | tee -a "$LOG"
-            if attempt_build; then
+          
+          ensure_basics
+          patch_gradle "8.7"
+          
+          for i in 1 2 3 4; do
+            echo "=== Attempt $i/4 ===" | tee -a "$LOG"
+            if try_build; then
               echo "BUILD_OK" | tee -a "$LOG"
               exit 0
             fi
-
-            # If Gradle min required is higher, bump and retry
-            if grep -E "Minimum supported Gradle version is[[:space:]]+([0-9.]+)" -m1 "$LOG" >/dev/null; then
-              REQ=$(grep -E "Minimum supported Gradle version is[[:space:]]+([0-9.]+)" -m1 "$LOG" | sed -E 's/.*is[[:space:]]+([0-9.]+).*/\1/')
-              if [ -n "$REQ" ]; then
-                echo ">> Bump Gradle wrapper to $REQ" | tee -a "$LOG"
-                patch_gradle_wrapper "$REQ"
-                ATTEMPT=$((ATTEMPT+1))
+            
+            if grep -E "Minimum supported Gradle version is +([0-9.]+)" "$LOG" >/dev/null; then
+              NEWG=$(grep -E "Minimum supported Gradle version is +([0-9.]+)" "$LOG" | head -1 | grep -oE '[0-9.]+' | head -1)
+              if [ -n "$NEWG" ]; then
+                echo "Upgrading Gradle to $NEWG" | tee -a "$LOG"
+                patch_gradle "$NEWG"
                 continue
               fi
             fi
-
-            # Try to fix common issues then retry
-            fix_common_plugin_issues_if_needed
-            ATTEMPT=$((ATTEMPT+1))
+            
+            fix_issues
           done
-
-          echo "BUILD_FAILED_AFTER_${MAX_ATTEMPTS}_ATTEMPTS" | tee -a "$LOG"
+          
+          echo "BUILD_FAILED" | tee -a "$LOG"
           exit 1
-          BASH
+          BUILDSCRIPT
+          
           chmod +x ci-build.sh
 
-      # 10) Run adaptive build
+      # 10) Run build
       - name: Run adaptive build
         working-directory: ${{ steps.findproj.outputs.project }}
-        run: |
-          bash "$GITHUB_WORKSPACE/ci-build.sh"
+        run: bash "$GITHUB_WORKSPACE/ci-build.sh"
 
       # 11) Upload artifacts — SHA pinned
       - name: Upload APK and logs
