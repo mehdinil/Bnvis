@@ -8,11 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@3df4ab11eba7bda6032c708c38a90492eeb96e1d
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@a01b58d4b09aaf37bd7be27d8f623ff1f4da7bde
         with:
           flutter-version: 'stable'
 
@@ -26,8 +30,8 @@ jobs:
           cd benvis
           flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e529c4b26d73b49c0e3d
         with:
           name: app-release
           path: benvis/build/app/outputs/flutter-apk/app-release.apk
