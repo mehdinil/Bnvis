@@ -1,4 +1,4 @@
-name: Build Android APK (from ZIP)
+name: Build Android APK (adaptive)
 
 on:
   workflow_dispatch:
@@ -29,10 +29,12 @@ jobs:
           build-tools: '34.0.0'
           accept-licenses: true
 
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
 
-      - name: Unzip project if a ZIP exists
+      - name: Unzip project if ZIP exists
         run: |
           shopt -s nullglob
           mkdir -p unzipped
@@ -64,39 +66,125 @@ jobs:
         with:
           channel: stable
 
-      # ---- Fix: Gradle 8.7 and safe Android config ----
-      - name: Patch Android Gradle (set Gradle 8.7)
-        working-directory: ${{ steps.findproj.outputs.project }}/android
+      - name: Create adaptive build script
+        env:
+          PROJ: ${{ steps.findproj.outputs.project }}
         run: |
           set -e
-          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's#distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-8.7-all.zip#' gradle/wrapper/gradle-wrapper.properties || true
-            sed -i '/distributionSha256/d' gradle/wrapper/gradle-wrapper.properties || true
-          fi
-          if [ -f app/build.gradle ]; then
-            sed -i 's/compileSdk[[:space:]]*[0-9]\+/compileSdk 34/' app/build.gradle || true
-            sed -i 's/targetSdk[[:space:]]*[0-9]\+/targetSdk 34/' app/build.gradle || true
-            grep -q 'kotlinOptions' app/build.gradle || printf '\nandroid {\n    kotlinOptions { jvmTarget = "17" }\n}\n' >> app/build.gradle
-          fi
-          touch ../gradle.properties
-          grep -q '^android.useAndroidX=true' ../gradle.properties || echo 'android.useAndroidX=true' >> ../gradle.properties
-          grep -q '^android.enableJetifier=true' ../gradle.properties || echo 'android.enableJetifier=true' >> ../gradle.properties
-          grep -q '^org.gradle.jvmargs=' ../gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> ../gradle.properties
+          cat > ci-build.sh <<'BASH'
+          set -e
+          PROJECT_DIR="${PROJ}"
+          cd "$PROJECT_DIR"
 
-      - name: Flutter pub get
-        working-directory: ${{ steps.findproj.outputs.project }}
-        run: flutter pub get
+          LOG_ROOT="$GITHUB_WORKSPACE"
+          LOG="$LOG_ROOT/apk_build_log.txt"
+          : > "$LOG"
 
-      - name: Build APK (release)
+          ensure_android_basics() {
+            mkdir -p android
+            # gradle.properties
+            touch android/gradle.properties
+            grep -q '^android.useAndroidX=' android/gradle.properties || echo 'android.useAndroidX=true' >> android/gradle.properties
+            grep -q '^android.enableJetifier=' android/gradle.properties || echo 'android.enableJetifier=true' >> android/gradle.properties
+            grep -q '^org.gradle.jvmargs=' android/gradle.properties || echo 'org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' >> android/gradle.properties
+
+            # compile/target/jvmTarget
+            if [ -f android/app/build.gradle ]; then
+              sed -i 's/compileSdk[[:space:]]*[0-9]\+/compileSdk 34/' android/app/build.gradle || true
+              sed -i 's/targetSdk[[:space:]]*[0-9]\+/targetSdk 34/' android/app/build.gradle || true
+              grep -q 'kotlinOptions' android/app/build.gradle || printf '\nandroid {\n    kotlinOptions { jvmTarget = "17" }\n}\n' >> android/app/build.gradle
+            fi
+          }
+
+          patch_gradle_wrapper() {
+            V="$1"
+            mkdir -p android/gradle/wrapper
+            if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+              sed -i "s#distributionUrl=.*#distributionUrl=https://services.gradle.org/distributions/gradle-${V}-all.zip#" android/gradle/wrapper/gradle-wrapper.properties || true
+              sed -i '/distributionSha256/d' android/gradle/wrapper/gradle-wrapper.properties || true
+            else
+              cat > android/gradle/wrapper/gradle-wrapper.properties <<EOF
+distributionUrl=https\://services.gradle.org/distributions/gradle-${V}-all.zip
+EOF
+            fi
+          }
+
+          fix_common_plugin_issues_if_needed() {
+            # file_picker V1 embedding → bump to ^8
+            if grep -q "PluginRegistry\\.Registrar" "$LOG" || grep -qi "Flutter v1" "$LOG"; then
+              if [ -f pubspec.yaml ]; then
+                sed -i -E 's/(^|[[:space:]])file_picker:[[:space:]]*\^?[0-9.]+/file_picker: ^8.0.0/' pubspec.yaml || true
+              fi
+            fi
+
+            # minSdk mismatch (e.g., "uses-sdk:minSdkVersion X ...")
+            if grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" >/dev/null; then
+              REQ=$(grep -E "uses-sdk:minSdkVersion[[:space:]]+[0-9]+" -m1 "$LOG" | sed -E 's/.*minSdkVersion[[:space:]]+([0-9]+).*/\1/')
+              if [ -n "$REQ" ]; then
+                if grep -q "minSdkVersion" android/app/build.gradle 2>/dev/null; then
+                  sed -i -E "s/minSdkVersion[[:space:]]+[0-9]+/minSdkVersion ${REQ}/" android/app/build.gradle || true
+                else
+                  # append a defaultConfig if missing
+                  printf '\nandroid {\n  defaultConfig { minSdkVersion %s }\n}\n' "$REQ" >> android/app/build.gradle
+                fi
+              fi
+            fi
+          }
+
+          attempt_build() {
+            set +e
+            flutter pub get 2>&1 | tee -a "$LOG"
+            flutter build apk --release --split-per-abi 2>&1 | tee -a "$LOG"
+            local rc=${PIPESTATUS[0]}
+            set -e
+            return $rc
+          }
+
+          ensure_android_basics
+
+          # Start with Gradle 8.7; adapt if logs demand higher
+          patch_gradle_wrapper "8.7"
+
+          ATTEMPT=1
+          MAX_ATTEMPTS=4
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "==== Attempt $ATTEMPT/$MAX_ATTEMPTS ====" | tee -a "$LOG"
+            if attempt_build; then
+              echo "BUILD_OK" | tee -a "$LOG"
+              exit 0
+            fi
+
+            # If Gradle min required is higher, bump and retry
+            if grep -E "Minimum supported Gradle version is[[:space:]]+([0-9.]+)" -m1 "$LOG" >/dev/null; then
+              REQ=$(grep -E "Minimum supported Gradle version is[[:space:]]+([0-9.]+)" -m1 "$LOG" | sed -E 's/.*is[[:space:]]+([0-9.]+).*/\1/')
+              if [ -n "$REQ" ]; then
+                echo ">> Bump Gradle wrapper to $REQ" | tee -a "$LOG"
+                patch_gradle_wrapper "$REQ"
+                ATTEMPT=$((ATTEMPT+1))
+                continue
+              fi
+            fi
+
+            # Try to fix common issues then retry
+            fix_common_plugin_issues_if_needed
+            ATTEMPT=$((ATTEMPT+1))
+          done
+
+          echo "BUILD_FAILED_AFTER_${MAX_ATTEMPTS}_ATTEMPTS" | tee -a "$LOG"
+          exit 1
+          BASH
+          chmod +x ci-build.sh
+
+      - name: Run adaptive build
         working-directory: ${{ steps.findproj.outputs.project }}
         run: |
-          flutter --version
-          ./android/gradlew -v || true
-          flutter build apk --release --split-per-abi || flutter build apk --release
+          bash "$GITHUB_WORKSPACE/ci-build.sh"
 
-      - name: Upload APK artifacts
+      - name: Upload APK and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: |
             ${{ steps.findproj.outputs.project }}/build/app/outputs/flutter-apk/*.apk
+            ${{ github.workspace }}/apk_build_log.txt
