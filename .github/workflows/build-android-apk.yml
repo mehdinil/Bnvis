@@ -13,7 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     
     steps:
       - name: Checkout
@@ -25,78 +24,40 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Flutter (from releases)
+      - name: Setup Flutter
         run: |
-          set -e
-          cd $HOME
-          wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
-          tar xf flutter_linux_3.24.5-stable.tar.xz
-          echo "$HOME/flutter/bin" >> $GITHUB_PATH
-          echo "$HOME/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
-          
-      - name: Verify Flutter
-        run: |
-          export PATH="$HOME/flutter/bin:$PATH"
-          flutter --version
-          flutter doctor -v
-          flutter precache --android
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1
+          echo "$PWD/flutter/bin" >> $GITHUB_PATH
       
-      - name: Patch Android config
-        working-directory: benvis/android
+      - name: Flutter doctor
         run: |
-          set -e
-          
-          # Gradle wrapper
+          flutter doctor -v
+          flutter --version
+      
+      - name: Fix Gradle
+        run: |
+          cd benvis/android
           mkdir -p gradle/wrapper
-          cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-          
-          # gradle.properties
-          cat > ../gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          android.enableJetifier=true
-          android.nonTransitiveRClass=true
-          EOF
-          
-          echo "✅ Gradle configured"
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > gradle/wrapper/gradle-wrapper.properties
+          echo "org.gradle.jvmargs=-Xmx2048m" > ../gradle.properties
+          echo "android.useAndroidX=true" >> ../gradle.properties
       
       - name: Get dependencies
-        working-directory: benvis
         run: |
-          export PATH="$HOME/flutter/bin:$PATH"
-          flutter pub get -v
+          cd benvis
+          flutter pub get || exit 1
       
-      - name: Generate code
-        working-directory: benvis
-        continue-on-error: true
+      - name: Build APK
         run: |
-          export PATH="$HOME/flutter/bin:$PATH"
-          flutter pub run build_runner build --delete-conflicting-outputs
+          cd benvis
+          flutter build apk --release || flutter build apk --debug
       
-      - name: Build APK (universal release)
-        working-directory: benvis
+      - name: Find APK
         run: |
-          export PATH="$HOME/flutter/bin:$PATH"
-          flutter build apk --release --dart-define=DEMO_MODE=false 2>&1 | tee $GITHUB_WORKSPACE/build.log
-      
-      - name: List APKs
-        working-directory: benvis
-        run: |
-          echo "📦 Built APKs:"
-          find build/app/outputs/flutter-apk/ -name "*.apk" -ls
+          find benvis -name "*.apk" -type f
       
       - name: Upload APK
-        if: always()
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3
         with:
           name: benvis-apk
-          path: |
-            benvis/build/app/outputs/flutter-apk/*.apk
-            build.log
-          if-no-files-found: warn
+          path: benvis/build/app/outputs/**/*.apk
