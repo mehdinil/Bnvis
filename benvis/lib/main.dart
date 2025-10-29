@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'config/app_config.dart';
+import 'services/profile_service.dart';
+import 'models/user_profile.dart';
 import 'theme.dart';
+import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/profile/profile_edit_screen.dart';
 import 'pages/home_page.dart';
 import 'pages/skills_page.dart';
 import 'pages/business_page.dart';
@@ -8,6 +13,7 @@ import 'pages/ai_coach_page.dart';
 import 'pages/settings_page.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const BenvisApp());
 }
 
@@ -37,8 +43,53 @@ class BenvisApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const MainScaffold(),
+      routes: {
+        '/': (context) => const _Root(),
+        '/profile-edit': (context) => const ProfileEditScreen(),
+      },
+      home: const _Root(),
     );
+  }
+}
+
+/// روت اصلی - تصمیم‌گیری بین Onboarding و Home
+class _Root extends StatefulWidget {
+  const _Root();
+
+  @override
+  State<_Root> createState() => _RootState();
+}
+
+class _RootState extends State<_Root> {
+  final _service = ProfileService();
+  bool? _onboarded;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final ok = await _service.isOnboarded();
+    if (!ok && kDemoMode) {
+      // اگر دمو مود فعال بود و هنوز آن‌بوردینگ نشده، پروفایل میهمان بساز
+      await _service.saveProfile(const UserProfile(fullName: 'کاربر میهمان'));
+      await _service.setOnboarded(true);
+      if (mounted) setState(() => _onboarded = true);
+    } else {
+      if (mounted) setState(() => _onboarded = ok);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_onboarded == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return _onboarded! ? const MainScaffold() : const OnboardingScreen();
   }
 }
 

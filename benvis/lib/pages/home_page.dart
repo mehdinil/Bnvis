@@ -1,10 +1,59 @@
 import 'package:flutter/material.dart';
 import '../widgets/glass.dart';
 import '../theme.dart';
+import '../services/profile_service.dart';
 
 /// صفحه اصلی با داشبورد و متریک‌ها
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final _service = ProfileService();
+  String _userName = 'کاربر';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _service.loadProfile();
+    if (profile != null && mounted) {
+      setState(() {
+        _userName = profile.fullName;
+      });
+    }
+  }
+
+  Future<void> _resetOnboarding() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('بازنشانی آن‌بوردینگ'),
+        content: const Text('آیا می‌خواهید به صفحه خوش‌آمدگویی برگردید؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('لغو'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('بله'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      await _service.resetAll();
+      // رفرش اپ
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +64,7 @@ class HomePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // هدر خوش‌آمدگویی
-            _buildHeader(),
+            _buildHeader(context),
             const SizedBox(height: 24),
 
             // کارت پیشرفت
@@ -72,24 +121,69 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '🌟 سلام، به بنویس خوش آمدید',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'امروز یک روز عالی برای پیشرفت است!',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.white.withOpacity(0.6),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '🌟 سلام، $_userName',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'امروز یک روز عالی برای پیشرفت است!',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) async {
+                if (value == 'edit') {
+                  await Navigator.of(context).pushNamed('/profile-edit');
+                  _loadProfile(); // رفرش پروفایل
+                } else if (value == 'reset') {
+                  _resetOnboarding();
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit),
+                      SizedBox(width: 8),
+                      Text('ویرایش پروفایل'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'reset',
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh),
+                      SizedBox(width: 8),
+                      Text('بازنشانی آن‌بوردینگ'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ],
     );
