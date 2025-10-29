@@ -36,15 +36,10 @@ android {
         abortOnError = false
     }
 
-    buildTypes {
+        buildTypes {
         release {
             signingConfig = signingConfigs.debug
         }
-    }
-    
-    lintOptions {
-        checkReleaseBuilds false
-        abortOnError false
     }
 }
 
