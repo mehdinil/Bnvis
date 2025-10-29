@@ -4,12 +4,12 @@ import 'config/app_config.dart';
 import 'services/profile_service.dart';
 import 'models/user_profile.dart';
 import 'theme.dart';
-import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/onboarding/smart_onboarding_wizard.dart';
 import 'screens/profile/profile_edit_screen.dart';
 import 'pages/home_page.dart';
-import 'pages/skills_page.dart';
-import 'pages/business_page.dart';
-import 'pages/ai_coach_page.dart';
+import 'modules/goals/goals_screen.dart';
+import 'modules/habits/habits_screen.dart';
+import 'modules/journal/journal_screen.dart';
 import 'pages/settings_page.dart';
 
 void main() {
@@ -89,7 +89,7 @@ class _RootState extends State<_Root> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return _onboarded! ? const MainScaffold() : const OnboardingScreen();
+    return _onboarded! ? const MainScaffold() : const SmartOnboardingWizard();
   }
 }
 
@@ -107,9 +107,9 @@ class _MainScaffoldState extends State<MainScaffold> {
   // لیست صفحات
   final List<Widget> _pages = const [
     HomePage(),
-    SkillsPage(),
-    BusinessPage(),
-    AiCoachPage(),
+    GoalsScreen(),
+    HabitsScreen(),
+    JournalScreen(),
     SettingsPage(),
   ];
 
@@ -134,19 +134,19 @@ class _MainScaffoldState extends State<MainScaffold> {
             label: 'خانه',
           ),
           NavigationDestination(
-            icon: Icon(Icons.school_outlined),
-            selectedIcon: Icon(Icons.school),
-            label: 'مهارت',
+            icon: Icon(Icons.flag_outlined),
+            selectedIcon: Icon(Icons.flag),
+            label: 'اهداف',
           ),
           NavigationDestination(
-            icon: Icon(Icons.business_center_outlined),
-            selectedIcon: Icon(Icons.business_center),
-            label: 'بیزنس',
+            icon: Icon(Icons.check_circle_outline),
+            selectedIcon: Icon(Icons.check_circle),
+            label: 'عادات',
           ),
           NavigationDestination(
-            icon: Icon(Icons.smart_toy_outlined),
-            selectedIcon: Icon(Icons.smart_toy),
-            label: 'AI',
+            icon: Icon(Icons.book_outlined),
+            selectedIcon: Icon(Icons.book),
+            label: 'ژورنال',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

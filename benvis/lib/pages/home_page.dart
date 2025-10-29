@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:isar/isar.dart';
 import '../widgets/glass.dart';
 import '../theme.dart';
 import '../services/profile_service.dart';
+import '../core/services/isar_service.dart';
+import '../core/services/ai_coach_service.dart';
+import '../core/models/goal.dart';
+import '../core/models/habit.dart';
+import '../core/models/journal_entry.dart';
+import 'package:intl/intl.dart';
 
 /// صفحه اصلی با داشبورد و متریک‌ها
 class HomePage extends StatefulWidget {
@@ -13,19 +20,47 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _service = ProfileService();
+  final _aiCoach = AiCoachService();
   String _userName = 'کاربر';
+  late Isar _isar;
+  
+  // Stats
+  int _activeGoals = 0;
+  int _todayHabits = 0;
+  int _habitStreak = 0;
+  int _journalCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    _loadData();
   }
 
-  Future<void> _loadProfile() async {
+  Future<void> _loadData() async {
     final profile = await _service.loadProfile();
     if (profile != null && mounted) {
       setState(() {
         _userName = profile.fullName;
+      });
+    }
+
+    _isar = await IsarService.getInstance();
+    
+    // Load stats
+    final goals = await _isar.goals.where().filter().statusEqualTo(GoalStatus.active).findAll();
+    final habits = await _isar.habits.where().findAll();
+    final journals = await _isar.journalEntrys.where().findAll();
+    
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final todayHabits = habits.where((h) => h.completedDates.contains(today)).length;
+    final maxStreak = habits.isNotEmpty ? habits.map((h) => h.currentStreak).reduce((a, b) => a > b ? a : b) : 0;
+
+    if (mounted) {
+      setState(() {
+        _activeGoals = goals.length;
+        _todayHabits = todayHabits;
+        _habitStreak = maxStreak;
+        _journalCount = journals.length;
       });
     }
   }
@@ -81,39 +116,61 @@ class _HomePageState extends State<HomePage> {
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
               childAspectRatio: 1.3,
-              children: const [
+              children: [
                 _MetricCard(
-                  title: 'درآمد ماهانه',
-                  value: '3.2M',
-                  icon: Icons.attach_money,
-                  color: BenvisTheme.blue,
+                  title: 'اهداف فعال',
+                  value: '$_activeGoals',
+                  icon: Icons.flag,
+                  color: BenvisTheme.purple,
                 ),
                 _MetricCard(
                   title: 'Streak روزانه',
-                  value: '12',
+                  value: '$_habitStreak',
                   suffix: 'روز',
                   icon: Icons.local_fire_department,
                   color: Colors.orange,
                 ),
                 _MetricCard(
-                  title: 'اهداف فعال',
-                  value: '5',
-                  icon: Icons.flag,
-                  color: BenvisTheme.purple,
-                ),
-                _MetricCard(
-                  title: 'تسک‌های امروز',
-                  value: '14',
+                  title: 'عادات امروز',
+                  value: '$_todayHabits',
                   icon: Icons.check_circle_outline,
                   color: Colors.green,
+                ),
+                _MetricCard(
+                  title: 'یادداشت‌ها',
+                  value: '$_journalCount',
+                  icon: Icons.book,
+                  color: BenvisTheme.blue,
                 ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // اهداف اخیر
-            const Glass(
-              child: _RecentGoals(),
+            // AI Coach Insight
+            Glass(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.psychology, color: BenvisTheme.purple, size: 24),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'AI Coach',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _aiCoach.getDailyQuote(),
+                      style: const TextStyle(fontSize: 14, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
