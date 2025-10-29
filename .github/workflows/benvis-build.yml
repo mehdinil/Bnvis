@@ -1,7 +1,20 @@
-name: BENVIS Build and Release
+name: BENVIS Build & Release
 
 on:
   workflow_dispatch:
+    inputs:
+      demo:
+        description: Enable DEMO_MODE
+        required: false
+        default: "false"
+      versionName:
+        description: Build name (e.g., 0.1.3)
+        required: false
+        default: ""
+      buildNumber:
+        description: Build number (e.g., 103)
+        required: false
+        default: ""
   push:
     branches:
       - main
@@ -11,6 +24,7 @@ on:
 
 env:
   PROJECT_DIR: benvis
+  JAVA_TOOL_OPTIONS: "-Xmx4g"
 
 jobs:
   build:
@@ -25,53 +39,86 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
       
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: "3.22.0"
           cache: true
       
-      - name: Get dependencies
+      - name: Show tool versions
+        run: |
+          java -version
+          flutter --version
+          dart --version
+      
+      - name: Restore Gradle caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+      
+      - name: Get dependencies (retry)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          flutter pub get
+          for i in 1 2 3; do
+            flutter pub get && break || sleep 3
+          done
+      
+      - name: Codegen (optional)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
           flutter pub run build_runner build --delete-conflicting-outputs || echo "No codegen"
       
-      - name: Build APK split-per-abi
+      - name: Pub report
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter build apk --release --split-per-abi --dart-define=DEMO_MODE=false
+        run: flutter pub outdated || true
       
-      - name: Build AAB
+      - name: Build APK (split-per-abi)
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter build appbundle --release --dart-define=DEMO_MODE=false
+        run: |
+          EXTRA=""
+          [ -n "${{ github.event.inputs.versionName }}" ] && EXTRA="$EXTRA --build-name=${{ github.event.inputs.versionName }}"
+          [ -n "${{ github.event.inputs.buildNumber }}" ] && EXTRA="$EXTRA --build-number=${{ github.event.inputs.buildNumber }}"
+          flutter build apk --release --split-per-abi \
+            --dart-define=DEMO_MODE=${{ inputs.demo || 'false' }} $EXTRA
+      
+      - name: Build AAB (optional)
+        working-directory: ${{ env.PROJECT_DIR }}
         continue-on-error: true
-      
-      - name: List outputs
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          ls -lh build/app/outputs/flutter-apk/*.apk || echo "No APK"
-          ls -lh build/app/outputs/bundle/release/*.aab || echo "No AAB"
+          EXTRA=""
+          [ -n "${{ github.event.inputs.versionName }}" ] && EXTRA="$EXTRA --build-name=${{ github.event.inputs.versionName }}"
+          [ -n "${{ github.event.inputs.buildNumber }}" ] && EXTRA="$EXTRA --build-number=${{ github.event.inputs.buildNumber }}"
+          flutter build appbundle --release \
+            --dart-define=DEMO_MODE=${{ inputs.demo || 'false' }} $EXTRA
       
-      - name: Package files
-        run: |
-          mkdir -p dist
-          cp ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*.apk dist/ || true
-          cp ${{ env.PROJECT_DIR }}/build/app/outputs/bundle/release/*.aab dist/ || true
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benvis-android-${{ github.run_number }}
+          path: |
+            ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*-release.apk
+            ${{ env.PROJECT_DIR }}/build/app/outputs/bundle/release/*.aab
+            ${{ env.PROJECT_DIR }}/pubspec.yaml
+            ${{ env.PROJECT_DIR }}/pubspec.lock
+          if-no-files-found: warn
+          retention-days: 7
       
-      - name: Create tag
-        id: tag
-        run: echo "tag=benvis-build-${{ github.run_number }}" >> $GITHUB_OUTPUT
-      
-      - name: Create release
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: benvis-build-${{ github.run_number }}
+          name: BENVIS Build #${{ github.run_number }}
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/*-release.apk
+            ${{ env.PROJECT_DIR }}/build/app/outputs/bundle/release/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          gh release create "$TAG" --title "BENVIS Build #${{ github.run_number }}" --notes "Automated build" dist/*
-          echo "Release: https://github.com/${{ github.repository }}/releases/tag/$TAG"
-      
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: benvis-apk
-          path: dist/*
