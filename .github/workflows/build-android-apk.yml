@@ -1,4 +1,4 @@
-name: Build Android APK (resilient)
+name: Build Android (BENVIS full)
 
 on:
   workflow_dispatch:
@@ -9,10 +9,12 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     
     steps:
       - name: Checkout
@@ -29,83 +31,119 @@ jobs:
           git clone https://github.com/flutter/flutter.git -b stable --depth 1
           echo "$PWD/flutter/bin" >> $GITHUB_PATH
           export PATH="$PWD/flutter/bin:$PATH"
+          flutter --version
           flutter doctor -v
       
-      - name: Create minimal working app
+      - name: Locate Flutter project
+        id: project
         run: |
-          # Create a fresh minimal Flutter app
-          flutter create --org com.benevis minimal_app
-          cd minimal_app
-          
-          # Copy Android config from benvis if exists
-          if [ -f ../benvis/android/app/src/main/AndroidManifest.xml ]; then
-            cp -r ../benvis/android/app/src/main/res android/app/src/main/ 2>/dev/null || true
+          if [ -d "benvis" ] && [ -f "benvis/pubspec.yaml" ]; then
+            echo "dir=benvis" >> $GITHUB_OUTPUT
+            echo "✅ Project: benvis/"
+          else
+            echo "❌ benvis/ not found"
+            exit 1
           fi
-          
-          # Create a simple main.dart
-          cat > lib/main.dart <<'EOF'
-          import 'package:flutter/material.dart';
-          
-          void main() => runApp(const BenvisApp());
-          
-          class BenvisApp extends StatelessWidget {
-            const BenvisApp({super.key});
-            
-            @override
-            Widget build(BuildContext context) {
-              return MaterialApp(
-                title: 'Benvis',
-                theme: ThemeData(
-                  colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-                  useMaterial3: true,
-                ),
-                home: const HomePage(),
-              );
-            }
-          }
-          
-          class HomePage extends StatelessWidget {
-            const HomePage({super.key});
-            
-            @override
-            Widget build(BuildContext context) {
-              return Scaffold(
-                appBar: AppBar(
-                  backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-                  title: const Text('Benvis Life OS'),
-                ),
-                body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.star, size: 80, color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Benvis Life OS',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Beta Version - Built with Flutter'),
-                    ],
-                  ),
-                ),
-              );
-            }
-          }
+      
+      - name: Decode keystore (if secrets exist)
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > ${{ steps.project.outputs.dir }}/android/app/keystore.jks
+            echo "✅ Keystore decoded"
+            echo "SIGNING_ENABLED=true" >> $GITHUB_ENV
+          else
+            echo "ℹ️ No keystore - debug signing"
+            echo "SIGNING_ENABLED=false" >> $GITHUB_ENV
+          fi
+      
+      - name: Configure signing (if keystore exists)
+        if: env.SIGNING_ENABLED == 'true'
+        working-directory: ${{ steps.project.outputs.dir }}/android
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          cat > key.properties <<EOF
+          storePassword=${STORE_PASSWORD}
+          keyPassword=${KEY_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          storeFile=keystore.jks
           EOF
+          
+          # Update build.gradle to use signing config
+          if ! grep -q "signingConfigs.release" app/build.gradle; then
+            sed -i '/buildTypes {/i \    signingConfigs {\n        release {\n            storeFile file("keystore.jks")\n            storePassword System.getenv("STORE_PASSWORD")\n            keyAlias System.getenv("KEY_ALIAS")\n            keyPassword System.getenv("KEY_PASSWORD")\n        }\n    }\n' app/build.gradle
+            sed -i 's/signingConfig = signingConfigs.debug/signingConfig = signingConfigs.release/' app/build.gradle
+          fi
+          echo "✅ Signing configured"
       
-      - name: Build APK
+      - name: Get dependencies
+        working-directory: ${{ steps.project.outputs.dir }}
         run: |
-          cd minimal_app
-          flutter build apk --release
+          flutter --version
+          flutter pub get
       
-      - name: Rename APK
+      - name: Generate code (build_runner)
+        working-directory: ${{ steps.project.outputs.dir }}
+        continue-on-error: true
         run: |
-          cd minimal_app/build/app/outputs/flutter-apk
-          mv app-release.apk benvis-beta.apk
+          echo "🔨 Running build_runner..."
+          flutter pub run build_runner build --delete-conflicting-outputs
       
-      - name: Upload APK
+      - name: Build Release APKs (split-per-abi)
+        id: build_apk
+        continue-on-error: true
+        working-directory: ${{ steps.project.outputs.dir }}
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "🚀 Building split APKs..."
+          flutter build apk --release --split-per-abi --dart-define=DEMO_MODE=false 2>&1 | tee $GITHUB_WORKSPACE/build_apk.log
+      
+      - name: Build Release AAB
+        id: build_aab
+        continue-on-error: true
+        working-directory: ${{ steps.project.outputs.dir }}
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "🚀 Building AAB..."
+          flutter build appbundle --release --dart-define=DEMO_MODE=false 2>&1 | tee $GITHUB_WORKSPACE/build_aab.log
+      
+      - name: Retry with Gradle 8.9 (if failed)
+        if: steps.build_apk.outcome == 'failure' || steps.build_aab.outcome == 'failure'
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: |
+          echo "⚠️ Retrying with Gradle 8.9..."
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
+          flutter clean
+          flutter pub get
+          flutter pub run build_runner build --delete-conflicting-outputs || true
+          flutter build apk --release --dart-define=DEMO_MODE=false
+          flutter build appbundle --release --dart-define=DEMO_MODE=false
+      
+      - name: List outputs
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: |
+          echo "📦 Built artifacts:"
+          find build/app/outputs -name "*.apk" -o -name "*.aab" | xargs ls -lh
+      
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3
         with:
-          name: benvis-apk
-          path: minimal_app/build/app/outputs/flutter-apk/benvis-beta.apk
+          name: benvis-release
+          path: |
+            ${{ steps.project.outputs.dir }}/build/app/outputs/flutter-apk/*.apk
+            ${{ steps.project.outputs.dir }}/build/app/outputs/bundle/release/*.aab
+            build_apk.log
+            build_aab.log
+          if-no-files-found: warn
