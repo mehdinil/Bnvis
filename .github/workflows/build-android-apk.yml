@@ -30,8 +30,9 @@ jobs:
         id: findproj
         run: |
           set -e
+          echo "🔍 Searching for Flutter project..."
           PROJECT_DIR=$(find . -maxdepth 4 -type f -name "pubspec.yaml" | head -n1 | xargs -I{} dirname {})
-          [ -n "$PROJECT_DIR" ] || (echo "No pubspec.yaml" && exit 1)
+          [ -n "$PROJECT_DIR" ] || (echo "❌ No pubspec.yaml found" && exit 1)
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
           echo "✅ Detected: $PROJECT_DIR"
           ls -la "$PROJECT_DIR"
