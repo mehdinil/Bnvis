@@ -24,135 +24,79 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
       
-      - name: Install Flutter manually
+      - name: Setup Flutter (from releases)
         run: |
           set -e
           cd $HOME
-          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
+          wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
+          tar xf flutter_linux_3.24.5-stable.tar.xz
           echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          echo "$HOME/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+          
+      - name: Verify Flutter
+        run: |
           export PATH="$HOME/flutter/bin:$PATH"
           flutter --version
           flutter doctor -v
           flutter precache --android
       
-      - name: Locate Flutter project
-        id: project
-        run: |
-          if [ -d "benvis" ] && [ -f "benvis/pubspec.yaml" ]; then
-            echo "dir=benvis" >> $GITHUB_OUTPUT
-            echo "✅ Project found: benvis/"
-          else
-            echo "❌ benvis/ not found"
-            exit 1
-          fi
-      
-      - name: Patch Android config (baseline)
-        working-directory: ${{ steps.project.outputs.dir }}/android
+      - name: Patch Android config
+        working-directory: benvis/android
         run: |
           set -e
           
           # Gradle wrapper
           mkdir -p gradle/wrapper
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" > gradle/wrapper/gradle-wrapper.properties
+          cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
           
           # gradle.properties
-          cat > gradle.properties <<EOF
+          cat > ../gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           android.enableJetifier=true
           android.nonTransitiveRClass=true
           EOF
           
-          # app/build.gradle patches
-          if [ -f app/build.gradle ]; then
-            # Ensure namespace
-            if ! grep -q "namespace" app/build.gradle; then
-              sed -i '/android {/a \    namespace "com.benevis.lifeos"' app/build.gradle
-            fi
-            
-            # Set SDK versions
-            sed -i 's/compileSdk[[:space:]]*[0-9]\+/compileSdk 34/' app/build.gradle
-            sed -i 's/targetSdk[[:space:]]*[0-9]\+/targetSdk 34/' app/build.gradle
-            sed -i 's/minSdk[[:space:]]*[0-9]\+/minSdk 23/' app/build.gradle
-            
-            # Kotlin jvmTarget
-            if ! grep -q "kotlinOptions" app/build.gradle; then
-              sed -i '/android {/a \    kotlinOptions {\n        jvmTarget = "17"\n    }' app/build.gradle
-            fi
-            
-            # Lint
-            if ! grep -q "lintOptions\|lint {" app/build.gradle; then
-              sed -i '/android {/a \    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }' app/build.gradle
-            fi
-          fi
-          
-          echo "✅ Android config patched"
+          echo "✅ Gradle configured"
       
-      - name: Flutter dependencies
-        working-directory: ${{ steps.project.outputs.dir }}
+      - name: Get dependencies
+        working-directory: benvis
         run: |
-          flutter --version
-          flutter pub get
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter pub get -v
       
-      - name: Generate code (build_runner)
-        working-directory: ${{ steps.project.outputs.dir }}
-        run: |
-          echo "🔨 Running build_runner..."
-          flutter pub run build_runner build --delete-conflicting-outputs || true
-          echo "✅ Code generation complete"
-      
-      - name: Build DEMO APK (attempt 1)
-        id: demo1
+      - name: Generate code
+        working-directory: benvis
         continue-on-error: true
-        working-directory: ${{ steps.project.outputs.dir }}
         run: |
-          echo "🚀 Building DEMO APK (split-per-abi)..."
-          flutter build apk --release --split-per-abi --dart-define=DEMO_MODE=true 2>&1 | tee $GITHUB_WORKSPACE/build_demo.log
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter pub run build_runner build --delete-conflicting-outputs
       
-      - name: Build DEMO APK (attempt 2 - universal)
-        if: steps.demo1.outcome == 'failure'
-        continue-on-error: true
-        working-directory: ${{ steps.project.outputs.dir }}
+      - name: Build APK (universal release)
+        working-directory: benvis
         run: |
-          echo "⚠️ Retry with Gradle 8.9 and universal APK..."
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-all.zip" > android/gradle/wrapper/gradle-wrapper.properties
-          flutter clean
-          flutter pub get
-          flutter build apk --release --dart-define=DEMO_MODE=true 2>&1 | tee -a $GITHUB_WORKSPACE/build_demo.log
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter build apk --release --dart-define=DEMO_MODE=false 2>&1 | tee $GITHUB_WORKSPACE/build.log
       
-      - name: Build NORMAL APK (attempt 1)
-        id: normal1
-        continue-on-error: true
-        working-directory: ${{ steps.project.outputs.dir }}
-        run: |
-          echo "🚀 Building NORMAL APK (split-per-abi)..."
-          flutter build apk --release --split-per-abi --dart-define=DEMO_MODE=false 2>&1 | tee $GITHUB_WORKSPACE/build_normal.log
-      
-      - name: Build NORMAL APK (attempt 2 - universal)
-        if: steps.normal1.outcome == 'failure'
-        continue-on-error: true
-        working-directory: ${{ steps.project.outputs.dir }}
-        run: |
-          echo "⚠️ Retry with universal APK..."
-          flutter clean
-          flutter pub get
-          flutter build apk --release --dart-define=DEMO_MODE=false 2>&1 | tee -a $GITHUB_WORKSPACE/build_normal.log
-      
-      - name: List built APKs
-        working-directory: ${{ steps.project.outputs.dir }}
+      - name: List APKs
+        working-directory: benvis
         run: |
           echo "📦 Built APKs:"
-          find build/app/outputs/flutter-apk/ -name "*.apk" -type f -exec ls -lh {} \; || echo "No APKs found"
+          find build/app/outputs/flutter-apk/ -name "*.apk" -ls
       
-      - name: Upload artifacts
+      - name: Upload APK
         if: always()
         uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3
         with:
-          name: android-apk
+          name: benvis-apk
           path: |
-            ${{ steps.project.outputs.dir }}/build/app/outputs/flutter-apk/*.apk
-            ${{ github.workspace }}/build_demo.log
-            ${{ github.workspace }}/build_normal.log
+            benvis/build/app/outputs/flutter-apk/*.apk
+            build.log
           if-no-files-found: warn
