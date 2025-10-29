@@ -19,7 +19,6 @@ jobs:
       PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/34.0.0:/home/runner/work/flutter/bin
 
     steps:
-      # 0) کلون ریپو بدون اکشن checkout
       - name: Checkout (no action)
         run: |
           set -e
@@ -28,18 +27,78 @@ jobs:
           git fetch --depth=1 origin ${{ github.ref_name }}
           git checkout FETCH_HEAD
 
-      # 1) پیش‌نیازهای سیستم
-      - name: Install system deps (JDK, tools)
+      - name: Install system deps
         run: |
           set -e
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk wget unzip xz-utils zip libglu1-mesa curl git
 
-      # 2) نصب Android SDK (cmdline-tools + platform + build-tools)
       - name: Install Android SDK
         run: |
           set -e
           sudo mkdir -p $ANDROID_HOME
           sudo chown -R $USER:$USER $ANDROID_HOME
           cd /tmp
-          # دریافت آخرین commandlinetools (alias
+          curl -L -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+          mkdir -p $ANDROID_HOME/cmdline-tools/latest
+          unzip -q cmdtools.zip -d $ANDROID_HOME/cmdline-tools/latest
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Install Flutter
+        run: |
+          set -e
+          cd $HOME
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          flutter --version
+          flutter doctor -v
+
+      - name: Pub get
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          rm -f pubspec.lock || true
+          flutter pub get
+
+      - name: Generate code (build_runner)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          flutter pub run build_runner build --delete-conflicting-outputs || true
+
+      - name: Build APKs
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          flutter build apk --release --split-per-abi --dart-define=DEMO_MODE=false
+
+      - name: Build AAB
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          flutter build appbundle --release --dart-define=DEMO_MODE=false
+
+      - name: Create ZIP of outputs
+        run: |
+          set -e
+          mkdir -p out
+          cp $PROJECT_DIR/build/app/outputs/flutter-apk/*.apk out/ || true
+          cp $PROJECT_DIR/build/app/outputs/bundle/release/*.aab out/ || true
+          ZIP_NAME="benvis-${{ github.run_id }}.zip"
+          cd out && zip -9 -r "$ZIP_NAME" . && cd -
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Publish Release + Upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="ci-${{ github.run_id }}"
+          TITLE="BENVIS CI Build #${{ github.run_number }}"
+          NOTES="Auto build from CI. Branch: ${{ github.ref_name }}"
+          gh release create "$TAG" -t "$TITLE" -n "$NOTES" || true
+          gh release upload "$TAG" out/*.apk --clobber || true
+          gh release upload "$TAG" out/*.aab --clobber || true
+          gh release upload "$TAG" out/$ZIP_NAME --clobber || true
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG"
