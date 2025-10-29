@@ -21,10 +21,16 @@ jobs:
           distribution: temurin
           java-version: '17'
       
-      - name: Setup Flutter (stable)
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+      - name: Install Flutter manually
+        run: |
+          set -e
+          cd $HOME
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter --version
+          flutter doctor -v
+          flutter precache --android
       
       - name: Locate Flutter project
         id: findproj
