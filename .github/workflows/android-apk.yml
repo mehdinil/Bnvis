@@ -12,16 +12,13 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@v4
       - name: Setup Java 17
-        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - name: Setup Flutter
-        run: |
-          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git ${{ runner.tool_cache }}/flutter
-          echo "${{ runner.tool_cache }}/flutter/bin" >> $GITHUB_PATH
-      - name: Flutter Version
-        run: flutter --version
+        uses: subosito/flutter-action@v2
+        with: { channel: "stable", cache: true }
       - name: Pub Get
         working-directory: ./benvis
         run: flutter pub get
@@ -32,7 +29,7 @@ jobs:
         working-directory: ./benvis
         run: flutter build apk --release --split-per-abi || flutter build apk --release
       - name: Upload APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: benvis/build/app/outputs/flutter-apk/*.apk
