@@ -46,7 +46,7 @@ jobs:
           # Verify zip before unzip
           unzip -t cmdtools.zip || (echo "Zip file corrupted, retrying..." && rm -f cmdtools.zip && curl -L -f -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && unzip -t cmdtools.zip)
           mkdir -p $ANDROID_HOME/cmdline-tools/latest
-          unzip -q cmdtools.zip -d $ANDROID_HOME/cmdline-tools/latest
+          # Verify zip before unzip`n          unzip -t cmdtools.zip || (echo "Zip corrupted, retrying..." && rm -f cmdtools.zip && curl -L -f -o cmdtools.zip $newUrl && unzip -t cmdtools.zip)`n          unzip -q cmdtools.zip -d $ANDROID_HOME/cmdline-tools/latest
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
