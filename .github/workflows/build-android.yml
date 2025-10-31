@@ -50,14 +50,7 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Install Flutter
-        run: |
-          set -e
-          cd $HOME
-          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
-          echo "$HOME/flutter/bin" >> $GITHUB_PATH
-          flutter --version
-          flutter doctor -v
+      - name: Install Flutter`n        run: |`n          set -e`n          cd $HOME`n          git clone --depth 1 -b stable https://github.com/flutter/flutter.git`n          export PATH="$HOME/flutter/bin:$PATH"`n          echo "$HOME/flutter/bin" >> $GITHUB_PATH`n          sleep 1`n          $HOME/flutter/bin/flutter --version`n          $HOME/flutter/bin/flutter doctor -v
 
       - name: Pub get
         working-directory: ${{ env.PROJECT_DIR }}
