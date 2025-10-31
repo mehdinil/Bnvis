@@ -1,12 +1,14 @@
 * text=auto eol=lf
-*.sh text eol=lf
-*.ps1 text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
-*.dart text eol=lf
-*.kt *.kts *.java text eol=lf
-*.gradle *.properties text eol=lf
-*.c *.cc *.cpp *.h *.hpp *.cmake text eol=lf
-*.swift *.m *.mm text eol=lf
-*.yaml *.yml *.json *.md *.txt text eol=lf
-*.png *.jpg *.jpeg *.gif *.webp *.ico *.pdf *.keystore -text
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.keystore binary
+benvis/linux/**   text eol=lf
+benvis/macos/**   text eol=lf
+benvis/windows/** text eol=lf
