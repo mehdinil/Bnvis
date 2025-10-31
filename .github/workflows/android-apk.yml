@@ -17,8 +17,11 @@ jobs:
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
         with: { distribution: temurin, java-version: "17" }
       - name: Setup Flutter
-        uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
-        with: { channel: "stable", cache: false }
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git ${{ runner.tool_cache }}/flutter
+          echo "${{ runner.tool_cache }}/flutter/bin" >> $GITHUB_PATH
+      - name: Flutter Version
+        run: flutter --version
       - name: Pub Get
         working-directory: ./benvis
         run: flutter pub get
