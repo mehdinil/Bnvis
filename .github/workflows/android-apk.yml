@@ -19,6 +19,20 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with: { channel: "stable", cache: true }
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+      - name: Cache Pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('benvis/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+      - name: Flutter Doctor
+        run: flutter --version && flutter doctor -v
       - name: Pub Get
         working-directory: ./benvis
         run: flutter pub get
@@ -27,7 +41,10 @@ jobs:
         run: flutter analyze
       - name: Build APK (release)
         working-directory: ./benvis
-        run: flutter build apk --release --split-per-abi || flutter build apk --release
+        env:
+          JAVA_TOOL_OPTIONS: "-Xmx3g -Dfile.encoding=UTF-8"
+        run: |
+          flutter build apk --release --split-per-abi || flutter build apk --release
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
