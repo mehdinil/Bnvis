@@ -18,7 +18,7 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - name: Setup Flutter
         uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
-        with: { channel: "stable", cache: true }
+        with: { channel: "stable", cache: false }
       - name: Pub Get
         working-directory: ./benvis
         run: flutter pub get
