@@ -1,4 +1,5 @@
 name: android-apk (benvis stable)
+
 on:
   workflow_dispatch:
   push:
@@ -7,6 +8,7 @@ on:
     paths:
       - benvis/**
       - .github/workflows/android-apk.yml
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -15,31 +17,20 @@ jobs:
       - uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
       - uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225
         with:
           channel: stable
           cache: true
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: ~/.gradle/caches
-          key: ubuntu-gradle-${{ hashFiles("**/*.gradle*", "**/gradle-wrapper.properties") }}
-          restore-keys: ubuntu-gradle-
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: ~/.pub-cache
-          key: ubuntu-pub-${{ hashFiles("benvis/pubspec.lock") }}
-          restore-keys: ubuntu-pub-
-      - run: flutter --version && flutter doctor -v
+      - run: flutter --version
       - run: flutter pub get
         working-directory: ./benvis
       - run: flutter analyze
         working-directory: ./benvis
-      - run: |
-          flutter build apk --release --split-per-abi || flutter build apk --release
+      - run: flutter build apk --release --split-per-abi
         working-directory: ./benvis
         env:
-          JAVA_TOOL_OPTIONS: "-Xmx3g -Dfile.encoding=UTF-8"
+          JAVA_TOOL_OPTIONS: '-Xmx3g -Dfile.encoding=UTF-8'
       - uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3
         with:
           name: android-apk
