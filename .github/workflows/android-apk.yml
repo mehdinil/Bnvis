@@ -20,13 +20,13 @@ jobs:
         uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225
         with: { channel: "stable", cache: true }
       - name: Cache Gradle
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        uses: actions/cache@88522ab9d171a708241fa8c79142e3a11cc98ce4
         with:
           path: ~/.gradle/caches
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
       - name: Cache Pub
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        uses: actions/cache@88522ab9d171a708241fa8c79142e3a11cc98ce4
         with:
           path: ~/.pub-cache
           key: ${{ runner.os }}-pub-${{ hashFiles('benvis/pubspec.lock') }}
