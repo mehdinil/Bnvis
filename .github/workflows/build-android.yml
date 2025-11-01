@@ -16,7 +16,7 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-      PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/34.0.0:/home/runner/work/flutter/bin
+      PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/34.0.0:/home/runner/flutter/bin
 
     steps:
       - name: Checkout (no action)
@@ -107,7 +107,13 @@ jobs:
           TITLE="BENVIS CI Build #${{ github.run_number }}"
           NOTES="Auto build from CI. Branch: ${{ github.ref_name }}"
           gh release create "$TAG" -t "$TITLE" -n "$NOTES" || true
-          gh release upload "$TAG" out/*.apk --clobber || true
-          gh release upload "$TAG" out/*.aab --clobber || true
-          gh release upload "$TAG" out/$ZIP_NAME --clobber || true
+          if compgen -G "out/*.apk" > /dev/null; then
+            gh release upload "$TAG" out/*.apk --clobber || true
+          fi
+          if compgen -G "out/*.aab" > /dev/null; then
+            gh release upload "$TAG" out/*.aab --clobber || true
+          fi
+          if [ -f "out/$ZIP_NAME" ]; then
+            gh release upload "$TAG" "out/$ZIP_NAME" --clobber || true
+          fi
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG"
