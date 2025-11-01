@@ -2,12 +2,11 @@ name: BENVIS Build
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - benvis/**
       - .github/workflows/benvis-build.yml
-env:
-  PROJECT_DIR: benvis
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,11 +17,11 @@ jobs:
       - uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
       - uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225
         with:
           channel: stable
-          flutter-version: "3.22.0"
+          flutter-version: '3.22.0'
           cache: true
       - name: Get dependencies
         working-directory: ./benvis
