@@ -16,7 +16,7 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-      PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/34.0.0:/home/runner/work/flutter/bin
+      PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/34.0.0:/home/runner/flutter/bin
 
     steps:
       - name: Checkout (no action)
@@ -45,12 +45,23 @@ jobs:
           done
           # Verify zip before unzip
           unzip -t cmdtools.zip || (echo "Zip file corrupted, retrying..." && rm -f cmdtools.zip && curl -L -f -o cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && unzip -t cmdtools.zip)
-          mkdir -p $ANDROID_HOME/cmdline-tools/latest
-          # Verify zip before unzip`n          unzip -t cmdtools.zip || (echo "Zip corrupted, retrying..." && rm -f cmdtools.zip && curl -L -f -o cmdtools.zip $newUrl && unzip -t cmdtools.zip)`n          unzip -q cmdtools.zip -d $ANDROID_HOME/cmdline-tools/latest
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          rm -rf $ANDROID_HOME/cmdline-tools/latest
+          unzip -q cmdtools.zip -d $ANDROID_HOME/cmdline-tools
+          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Install Flutter`n        run: |`n          set -e`n          cd $HOME`n          git clone --depth 1 -b stable https://github.com/flutter/flutter.git`n          export PATH="$HOME/flutter/bin:$PATH"`n          echo "$HOME/flutter/bin" >> $GITHUB_PATH`n          sleep 1`n          $HOME/flutter/bin/flutter --version`n          $HOME/flutter/bin/flutter doctor -v
+      - name: Install Flutter
+        run: |
+          set -e
+          cd $HOME
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git
+          export PATH="$HOME/flutter/bin:$PATH"
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          sleep 1
+          $HOME/flutter/bin/flutter --version
+          $HOME/flutter/bin/flutter doctor -v
 
       - name: Pub get
         working-directory: ${{ env.PROJECT_DIR }}
@@ -96,7 +107,13 @@ jobs:
           TITLE="BENVIS CI Build #${{ github.run_number }}"
           NOTES="Auto build from CI. Branch: ${{ github.ref_name }}"
           gh release create "$TAG" -t "$TITLE" -n "$NOTES" || true
-          gh release upload "$TAG" out/*.apk --clobber || true
-          gh release upload "$TAG" out/*.aab --clobber || true
-          gh release upload "$TAG" out/$ZIP_NAME --clobber || true
+          if compgen -G "out/*.apk" > /dev/null; then
+            gh release upload "$TAG" out/*.apk --clobber || true
+          fi
+          if compgen -G "out/*.aab" > /dev/null; then
+            gh release upload "$TAG" out/*.aab --clobber || true
+          fi
+          if [ -f "out/$ZIP_NAME" ]; then
+            gh release upload "$TAG" "out/$ZIP_NAME" --clobber || true
+          fi
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG"
