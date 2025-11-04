@@ -180,9 +180,9 @@ class _JournalScreenState extends State<JournalScreen> {
 
 /// صفحه ورود/ویرایش یادداشت
 class JournalEntryScreen extends StatefulWidget {
-  final JournalEntry? entry;
 
   const JournalEntryScreen({super.key, this.entry});
+  final JournalEntry? entry;
 
   @override
   State<JournalEntryScreen> createState() => _JournalEntryScreenState();

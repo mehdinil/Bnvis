@@ -1,25 +1,31 @@
+
 import 'package:hive/hive.dart';
+
 part 'journal_entry.g.dart';
 
 @HiveType(typeId: 6)
 class JournalEntry extends HiveObject {
   @HiveField(0)
-  String id;
+  late String id;
+
   @HiveField(1)
-  DateTime date;
+  late String content;
+
   @HiveField(2)
-  int mood; // 1..5
+  late DateTime date;
+
   @HiveField(3)
-  String text;
+  late DateTime createdAt;
+
   @HiveField(4)
-  List<String> tags;
+  late DateTime updatedAt;
 
   JournalEntry({
-    required this.id,
+    required this.content,
     required this.date,
-    required this.mood,
-    required this.text,
-    List<String>? tags,
-  }) : tags = tags ?? [];
+  }) {
+    id = DateTime.now().millisecondsSinceEpoch.toString();
+    createdAt = DateTime.now();
+    updatedAt = DateTime.now();
+  }
 }
-

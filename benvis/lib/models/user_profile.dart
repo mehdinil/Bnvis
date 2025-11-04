@@ -1,19 +1,7 @@
 import 'dart:convert';
 
 /// مدل پروفایل کاربر (گسترش یافته)
-class UserProfile {
-  final String fullName;
-  final String? email;
-  final String? phone;
-
-  // داده‌های آن‌بوردینگ
-  final String? mainGoal; // هدف اصلی زندگی
-  final List<String>? favoriteHabits; // عادات مورد علاقه
-  final List<String>? skillsToLearn; // مهارت‌هایی که می‌خواهد یاد بگیرد
-  final String? sleepTime; // HH:mm
-  final String? wakeTime; // HH:mm
-  final String? userType; // student, employee, freelancer, manager
-  final String? themeName; // neon, purple, minimal, light
+class UserProfile { // neon, purple, minimal, light
 
   const UserProfile({
     required this.fullName,
@@ -27,23 +15,6 @@ class UserProfile {
     this.userType,
     this.themeName,
   });
-
-  /// تبدیل به Map
-  Map<String, dynamic> toMap() => {
-        'fullName': fullName,
-        'email': email,
-        'phone': phone,
-        'mainGoal': mainGoal,
-        'favoriteHabits': favoriteHabits,
-        'skillsToLearn': skillsToLearn,
-        'sleepTime': sleepTime,
-        'wakeTime': wakeTime,
-        'userType': userType,
-        'themeName': themeName,
-      };
-
-  /// تبدیل به JSON string
-  String toJson() => json.encode(toMap());
 
   /// ساخت از JSON string
   factory UserProfile.fromJson(String source) =>
@@ -62,6 +33,35 @@ class UserProfile {
         userType: map['userType'] as String?,
         themeName: map['themeName'] as String?,
       );
+  final String fullName;
+  final String? email;
+  final String? phone;
+
+  // داده‌های آن‌بوردینگ
+  final String? mainGoal; // هدف اصلی زندگی
+  final List<String>? favoriteHabits; // عادات مورد علاقه
+  final List<String>? skillsToLearn; // مهارت‌هایی که می‌خواهد یاد بگیرد
+  final String? sleepTime; // HH:mm
+  final String? wakeTime; // HH:mm
+  final String? userType; // student, employee, freelancer, manager
+  final String? themeName;
+
+  /// تبدیل به Map
+  Map<String, dynamic> toMap() => {
+        'fullName': fullName,
+        'email': email,
+        'phone': phone,
+        'mainGoal': mainGoal,
+        'favoriteHabits': favoriteHabits,
+        'skillsToLearn': skillsToLearn,
+        'sleepTime': sleepTime,
+        'wakeTime': wakeTime,
+        'userType': userType,
+        'themeName': themeName,
+      };
+
+  /// تبدیل به JSON string
+  String toJson() => json.encode(toMap());
 
   /// کپی با تغییرات
   UserProfile copyWith({

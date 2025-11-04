@@ -51,7 +51,7 @@ class BenevisApp extends StatelessWidget {
         );
 
     return MaterialApp(
-      title: 'Benevis | Life OS',
+      title: 'Benvis | Life OS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -59,11 +59,9 @@ class BenevisApp extends StatelessWidget {
         colorScheme: const ColorScheme.dark(
           primary: neonBlue,
           secondary: electricMagenta,
-          background: deepViolet,
           surface: deepViolet,
           onPrimary: Colors.black,
           onSecondary: Colors.black,
-          onBackground: whiteText,
           onSurface: whiteText,
           error: Color(0xFFF24C4C),
           onError: Colors.black,

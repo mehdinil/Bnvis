@@ -17,14 +17,14 @@ class GoalAdapter extends TypeAdapter<Goal> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Goal(
-      id: fields[0] as String,
       title: fields[1] as String,
-      why: fields[2] as String?,
-      priority: fields[3] as int,
+      description: fields[2] as String?,
+      status: fields[3] as GoalStatus,
       dueDate: fields[4] as DateTime?,
-      status: fields[5] as GoalStatus,
-      tags: (fields[6] as List?)?.cast<String>(),
-    );
+    )
+      ..id = fields[0] as String
+      ..createdAt = fields[5] as DateTime
+      ..updatedAt = fields[6] as DateTime;
   }
 
   @override
@@ -36,15 +36,15 @@ class GoalAdapter extends TypeAdapter<Goal> {
       ..writeByte(1)
       ..write(obj.title)
       ..writeByte(2)
-      ..write(obj.why)
+      ..write(obj.description)
       ..writeByte(3)
-      ..write(obj.priority)
+      ..write(obj.status)
       ..writeByte(4)
       ..write(obj.dueDate)
       ..writeByte(5)
-      ..write(obj.status)
+      ..write(obj.createdAt)
       ..writeByte(6)
-      ..write(obj.tags);
+      ..write(obj.updatedAt);
   }
 
   @override
@@ -66,26 +66,26 @@ class GoalStatusAdapter extends TypeAdapter<GoalStatus> {
   GoalStatus read(BinaryReader reader) {
     switch (reader.readByte()) {
       case 0:
-        return GoalStatus.draft;
+        return GoalStatus.inProgress;
       case 1:
-        return GoalStatus.active;
+        return GoalStatus.completed;
       case 2:
-        return GoalStatus.done;
+        return GoalStatus.archived;
       default:
-        return GoalStatus.draft;
+        return GoalStatus.inProgress;
     }
   }
 
   @override
   void write(BinaryWriter writer, GoalStatus obj) {
     switch (obj) {
-      case GoalStatus.draft:
+      case GoalStatus.inProgress:
         writer.writeByte(0);
         break;
-      case GoalStatus.active:
+      case GoalStatus.completed:
         writer.writeByte(1);
         break;
-      case GoalStatus.done:
+      case GoalStatus.archived:
         writer.writeByte(2);
         break;
     }

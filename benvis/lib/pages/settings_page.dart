@@ -8,32 +8,32 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    return const SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               '⚙️ تنظیمات',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
 
             // پروفایل
-            const Glass(
+            Glass(
               child: _ProfileSection(),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
 
             // تنظیمات عمومی
-            const Glass(
+            Glass(
               child: _GeneralSettings(),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
 
             // درباره
-            const Glass(
+            Glass(
               child: _AboutSection(),
             ),
           ],
@@ -116,15 +116,15 @@ class _GeneralSettings extends StatelessWidget {
 }
 
 class _SettingItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
 
   const _SettingItem({
     required this.icon,
     required this.title,
     required this.value,
   });
+  final IconData icon;
+  final String title;
+  final String value;
 
   @override
   Widget build(BuildContext context) {

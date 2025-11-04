@@ -1,38 +1,49 @@
+
 import 'package:hive/hive.dart';
+
 part 'goal.g.dart';
 
 @HiveType(typeId: 1)
 enum GoalStatus {
-  @HiveField(0) draft,
-  @HiveField(1) active,
-  @HiveField(2) done,
+  @HiveField(0)
+  inProgress,
+  @HiveField(1)
+  completed,
+  @HiveField(2)
+  archived,
 }
 
 @HiveType(typeId: 2)
 class Goal extends HiveObject {
   @HiveField(0)
-  String id;
+  late String id;
+
   @HiveField(1)
-  String title;
+  late String title;
+
   @HiveField(2)
-  String? why;
+  String? description;
+
   @HiveField(3)
-  int priority; // 1..3
+  late GoalStatus status;
+
   @HiveField(4)
   DateTime? dueDate;
+
   @HiveField(5)
-  GoalStatus status;
+  late DateTime createdAt;
+
   @HiveField(6)
-  List<String> tags;
+  late DateTime updatedAt;
 
   Goal({
-    required this.id,
     required this.title,
-    this.why,
-    this.priority = 2,
+    this.description,
+    this.status = GoalStatus.inProgress,
     this.dueDate,
-    this.status = GoalStatus.active,
-    List<String>? tags,
-  }) : tags = tags ?? [];
+  }) {
+    id = DateTime.now().millisecondsSinceEpoch.toString();
+    createdAt = DateTime.now();
+    updatedAt = DateTime.now();
+  }
 }
-

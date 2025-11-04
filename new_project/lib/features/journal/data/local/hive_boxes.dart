@@ -1,7 +1,7 @@
-class HiveBoxes {
-  static const goals = 'goals';
-  static const tasks = 'tasks';
-  static const habits = 'habits';
-  static const journal = 'journal';
-}
 
+class HiveBoxes {
+  static const String goals = 'goals';
+  static const String tasks = 'tasks';
+  static const String habits = 'habits';
+  static const String journal = 'journal';
+}

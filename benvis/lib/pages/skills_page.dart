@@ -8,26 +8,26 @@ class SkillsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    return const SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               '📚 مهارت‌های من',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
 
             // مهارت‌های در حال یادگیری
-            const Glass(
+            Glass(
               child: _SkillsSection(),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
 
             // دوره‌های پیشنهادی
-            const Glass(
+            Glass(
               child: _RecommendedCourses(),
             ),
           ],
@@ -69,10 +69,6 @@ class _SkillsSection extends StatelessWidget {
 }
 
 class _SkillItem extends StatelessWidget {
-  final String title;
-  final double progress;
-  final IconData icon;
-  final Color color;
 
   const _SkillItem({
     required this.title,
@@ -80,6 +76,10 @@ class _SkillItem extends StatelessWidget {
     required this.icon,
     required this.color,
   });
+  final String title;
+  final double progress;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {

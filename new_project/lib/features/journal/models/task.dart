@@ -1,25 +1,43 @@
+
 import 'package:hive/hive.dart';
+
 part 'task.g.dart';
 
 @HiveType(typeId: 3)
 class Task extends HiveObject {
   @HiveField(0)
-  String id;
+  late String id;
+
   @HiveField(1)
-  String goalId;
+  late String title;
+
   @HiveField(2)
-  String title;
+  String? description;
+
   @HiveField(3)
-  DateTime? due;
+  late bool isCompleted;
+
   @HiveField(4)
-  bool done;
+  DateTime? dueDate;
+
+  @HiveField(5)
+  late DateTime createdAt;
+
+  @HiveField(6)
+  late DateTime updatedAt;
+
+  @HiveField(7)
+  String? goalId;
 
   Task({
-    required this.id,
-    required this.goalId,
     required this.title,
-    this.due,
-    this.done = false,
-  });
+    this.description,
+    this.isCompleted = false,
+    this.dueDate,
+    this.goalId,
+  }) {
+    id = DateTime.now().millisecondsSinceEpoch.toString();
+    createdAt = DateTime.now();
+    updatedAt = DateTime.now();
+  }
 }
-

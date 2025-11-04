@@ -3,10 +3,6 @@ import 'package:flutter/material.dart';
 
 /// کارت شیشه‌ای با blur و شفافیت (glassmorphism)
 class Glass extends StatelessWidget {
-  final Widget child;
-  final double radius;
-  final EdgeInsetsGeometry? padding;
-  final double opacity;
 
   const Glass({
     super.key,
@@ -15,6 +11,10 @@ class Glass extends StatelessWidget {
     this.padding,
     this.opacity = 0.06,
   });
+  final Widget child;
+  final double radius;
+  final EdgeInsetsGeometry? padding;
+  final double opacity;
 
   @override
   Widget build(BuildContext context) {

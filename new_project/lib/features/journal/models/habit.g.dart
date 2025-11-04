@@ -17,28 +17,34 @@ class HabitAdapter extends TypeAdapter<Habit> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Habit(
-      id: fields[0] as String,
-      name: fields[1] as String,
-      frequency: fields[2] as HabitFrequency,
-      streak: fields[3] as int,
-      log: (fields[4] as List?)?.cast<DateTime>(),
-    );
+      title: fields[1] as String,
+      description: fields[2] as String?,
+      frequency: fields[3] as HabitFrequency,
+    )
+      ..id = fields[0] as String
+      ..completedDates = (fields[4] as List).cast<DateTime>()
+      ..createdAt = fields[5] as DateTime
+      ..updatedAt = fields[6] as DateTime;
   }
 
   @override
   void write(BinaryWriter writer, Habit obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.name)
+      ..write(obj.title)
       ..writeByte(2)
-      ..write(obj.frequency)
+      ..write(obj.description)
       ..writeByte(3)
-      ..write(obj.streak)
+      ..write(obj.frequency)
       ..writeByte(4)
-      ..write(obj.log);
+      ..write(obj.completedDates)
+      ..writeByte(5)
+      ..write(obj.createdAt)
+      ..writeByte(6)
+      ..write(obj.updatedAt);
   }
 
   @override
@@ -63,6 +69,8 @@ class HabitFrequencyAdapter extends TypeAdapter<HabitFrequency> {
         return HabitFrequency.daily;
       case 1:
         return HabitFrequency.weekly;
+      case 2:
+        return HabitFrequency.monthly;
       default:
         return HabitFrequency.daily;
     }
@@ -76,6 +84,9 @@ class HabitFrequencyAdapter extends TypeAdapter<HabitFrequency> {
         break;
       case HabitFrequency.weekly:
         writer.writeByte(1);
+        break;
+      case HabitFrequency.monthly:
+        writer.writeByte(2);
         break;
     }
   }

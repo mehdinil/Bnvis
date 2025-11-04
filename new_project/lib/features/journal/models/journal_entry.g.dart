@@ -17,12 +17,12 @@ class JournalEntryAdapter extends TypeAdapter<JournalEntry> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return JournalEntry(
-      id: fields[0] as String,
-      date: fields[1] as DateTime,
-      mood: fields[2] as int,
-      text: fields[3] as String,
-      tags: (fields[4] as List?)?.cast<String>(),
-    );
+      content: fields[1] as String,
+      date: fields[2] as DateTime,
+    )
+      ..id = fields[0] as String
+      ..createdAt = fields[3] as DateTime
+      ..updatedAt = fields[4] as DateTime;
   }
 
   @override
@@ -32,13 +32,13 @@ class JournalEntryAdapter extends TypeAdapter<JournalEntry> {
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.date)
+      ..write(obj.content)
       ..writeByte(2)
-      ..write(obj.mood)
+      ..write(obj.date)
       ..writeByte(3)
-      ..write(obj.text)
+      ..write(obj.createdAt)
       ..writeByte(4)
-      ..write(obj.tags);
+      ..write(obj.updatedAt);
   }
 
   @override
