@@ -222,7 +222,7 @@ class _HabitDialogState extends State<_HabitDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<HabitFrequency>(
-            value: _frequency,
+            initialValue: _frequency,
             decoration: const InputDecoration(
               labelText: 'تکرار',
               border: OutlineInputBorder(),

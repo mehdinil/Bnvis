@@ -296,7 +296,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           // Info Card
           Card(
-            color: colorScheme.surfaceVariant.withOpacity(0.3),
+            color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(

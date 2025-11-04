@@ -153,11 +153,11 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       children: [
-                        const Icon(Icons.psychology, color: BenvisTheme.purple, size: 24),
-                        const SizedBox(width: 8),
-                        const Text(
+                        Icon(Icons.psychology, color: BenvisTheme.purple, size: 24),
+                        SizedBox(width: 8),
+                        Text(
                           'AI Coach',
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                         ),
@@ -298,11 +298,6 @@ class _ProgressCard extends StatelessWidget {
 
 /// کارت متریک
 class _MetricCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String? suffix;
-  final IconData icon;
-  final Color color;
 
   const _MetricCard({
     required this.title,
@@ -311,6 +306,11 @@ class _MetricCard extends StatelessWidget {
     required this.icon,
     required this.color,
   });
+  final String title;
+  final String value;
+  final String? suffix;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -392,15 +392,15 @@ class _RecentGoals extends StatelessWidget {
 }
 
 class _GoalItem extends StatelessWidget {
-  final String title;
-  final double progress;
-  final Color color;
 
   const _GoalItem({
     required this.title,
     required this.progress,
     required this.color,
   });
+  final String title;
+  final double progress;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {

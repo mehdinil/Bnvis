@@ -69,10 +69,6 @@ class BusinessPage extends StatelessWidget {
 }
 
 class _BusinessMetric extends StatelessWidget {
-  final String title;
-  final String value;
-  final String trend;
-  final bool isPositive;
 
   const _BusinessMetric({
     required this.title,
@@ -80,6 +76,10 @@ class _BusinessMetric extends StatelessWidget {
     required this.trend,
     required this.isPositive,
   });
+  final String title;
+  final String value;
+  final String trend;
+  final bool isPositive;
 
   @override
   Widget build(BuildContext context) {

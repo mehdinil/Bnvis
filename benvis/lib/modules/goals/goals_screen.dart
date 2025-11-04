@@ -204,9 +204,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
 /// دیالوگ افزودن/ویرایش هدف
 class _GoalDialog extends StatefulWidget {
-  final Goal? goal;
 
   const _GoalDialog({this.goal});
+  final Goal? goal;
 
   @override
   State<_GoalDialog> createState() => _GoalDialogState();
@@ -260,7 +260,7 @@ class _GoalDialogState extends State<_GoalDialog> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<GoalCategory>(
-              value: _category,
+              initialValue: _category,
               decoration: const InputDecoration(
                 labelText: 'دسته‌بندی',
                 border: OutlineInputBorder(),

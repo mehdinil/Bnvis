@@ -15,7 +15,6 @@ class BenvisTheme {
           primary: purple,
           secondary: blue,
           surface: cardGlass,
-          background: bg,
         ),
         useMaterial3: true,
         fontFamily: 'Inter',
@@ -27,7 +26,7 @@ class BenvisTheme {
         navigationBarTheme: NavigationBarThemeData(
           backgroundColor: const Color(0xFF1A1F3A),
           indicatorColor: purple.withOpacity(0.3),
-          labelTextStyle: MaterialStateProperty.all(
+          labelTextStyle: WidgetStateProperty.all(
             const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
           ),
         ),

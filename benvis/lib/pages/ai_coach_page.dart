@@ -111,14 +111,14 @@ class _WeeklyStats extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'آمار هفته',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
@@ -145,15 +145,15 @@ class _WeeklyStats extends StatelessWidget {
 }
 
 class _StatItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
 
   const _StatItem({
     required this.label,
     required this.value,
     required this.color,
   });
+  final String label;
+  final String value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +187,11 @@ class _AiInsights extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Icon(Icons.analytics, color: BenvisTheme.blue, size: 20),
-            const SizedBox(width: 8),
-            const Text(
+            Icon(Icons.analytics, color: BenvisTheme.blue, size: 20),
+            SizedBox(width: 8),
+            Text(
               'تحلیل هوشمند',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
