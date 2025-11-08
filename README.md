@@ -1,6 +1,6 @@
 # Benvis — Your Life OS (Flutter)
 
-اپلیکیشن **بنویس**: مدیریت اهداف و عادات، پیگیری مهارت‌ها، KPIهای کسب‌وکار و کوچ هوش‌مصنوعی—همه در یک داشبورد مدرن با تم تیره و گلس‌مورفیسم.  
+اپلیکیشن **بنویس**: مدیریت اهداف و عادات، پیگیری مهارت‌ها، KPIهای کسب‌وکار و کوچ هوش‌مصنوعی—همه در یک داشبورد مدرن با تم تیره و گلس‌مورفیسم.
 **بستهٔ اندروید:** `com.benvis.app` • **پوشهٔ پروژه:** `benvis/`
 
 ---
@@ -41,3 +41,23 @@ git clone https://github.com/mehdinil/Bnvis.git
 cd Bnvis/benvis
 flutter pub get
 flutter run -d android
+```
+
+### ساخت APK محلی
+```bash
+cd Bnvis/benvis
+flutter clean
+flutter build apk --release --split-per-abi
+```
+
+خروجی در مسیر `benvis/build/app/outputs/flutter-apk/` قرار می‌گیرد. سه فایل اصلی (`app-armeabi-v7a-release.apk`،
+`app-arm64-v8a-release.apk` و `app-x86_64-release.apk`) برای معماری‌های مختلف تولید می‌شود؛ می‌توانید بنابر نیاز آن‌ها را مستقیماً نصب کنید یا با ابزارهایی مانند `bundletool` در یک بستهٔ واحد ادغام نمایید.
+
+### دریافت خروجی از GitHub Actions
+Workflow آمادهٔ **BENVIS Build** روی شاخهٔ `main` به‌صورت خودکار اجرا می‌شود و خروجی را به‌عنوان Artifact نگه می‌دارد.
+
+1. به تب **Actions** در ریپو بروید و Workflow با نام *BENVIS Build* را باز کنید.
+2. آخرین اجرای موفق را انتخاب کنید یا با **Run workflow** اجرا را دستی آغاز کنید.
+3. در انتهای صفحه، از بخش **Artifacts** بستهٔ `benvis-android` را دانلود کنید؛ این بسته شامل همهٔ APKهای تولیدشده است.
+
+> در صورت نیاز به AAB نیز می‌توانید دستور `flutter build appbundle --release` را محلی اجرا کنید یا آن را به Workflow بیفزایید.
